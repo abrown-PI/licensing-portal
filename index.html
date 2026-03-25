@@ -791,6 +791,142 @@ let sortField = 'expirationDate';
 let sortDir = 1;
 
 // ===== SEED DATA FROM SPREADSHEET =====
+// ===== LOCATION BUSINESS INFO =====
+const LOCATION_INFO = {
+  "Erie, PA": {
+    businessName: "Southern Tier Home Infusion, Inc.",
+    dba: "Pharmacy Innovations",
+    address: "2936 W 17th St",
+    city: "Erie", stateAbbr: "PA", zip: "16505",
+    npi: "1629297718", ncpdp: "3982926",
+    dea: "BP8752152", taxId: "161472560",
+    stateLicense: "PP481320",
+    established: "2004-12-01",
+    phone: "814-838-2102", fax: "800-234-1954",
+    hours: "M-F 8:30am - 6:30pm, Sat 9:00am - 1:00pm"
+  },
+  "Jamestown, NY": {
+    businessName: "Southern Tier Home Infusion, Inc.",
+    dba: "Pharmacy Innovations",
+    address: "863 Fairmount Ave",
+    city: "Jamestown", stateAbbr: "NY", zip: "14701",
+    npi: "1295875730", ncpdp: "3337056",
+    dea: "BR3737648", taxId: "161472560",
+    stateLicense: "22433",
+    established: "2024-01-01",
+    phone: "716-484-1586", fax: "716-488-0073",
+    hours: "M-F 9:00am - 5:30pm"
+  },
+  "Houston, TX": {
+    businessName: "Southern Tier Home Infusion, Inc.",
+    dba: "Pharmacy Innovations",
+    address: "8687 Louetta Rd. Ste 150",
+    city: "Spring", stateAbbr: "TX", zip: "77379",
+    npi: "1245386689", ncpdp: "4567799",
+    dea: "FR0629898", taxId: "161472560",
+    stateLicense: "25732",
+    established: "2007-09-11",
+    phone: "281-251-0888", fax: "281-251-0889",
+    hours: "M-F 9:00am - 5:30pm"
+  },
+  "Florida (St. Pete)": {
+    businessName: "Creative Pharmacy Solutions East, LLC",
+    dba: "Pharmacy Innovations",
+    address: "7779 Starkey Rd",
+    city: "Seminole", stateAbbr: "FL", zip: "33777",
+    npi: "1972500130", ncpdp: "1081366",
+    dea: "FT4409555", taxId: "465564676",
+    stateLicense: "PH30191",
+    established: "2016-04-01",
+    phone: "727-381-9799", fax: "727-347-2050",
+    hours: "M-F 9:00am - 5:30pm"
+  },
+  "Virginia (Virginia Beach)": {
+    businessName: "Creative Pharmacy Solutions East, LLC",
+    dba: "Pharmacy Innovations",
+    address: "4001 Virginia Beach Blvd Ste 110",
+    city: "Virginia Beach", stateAbbr: "VA", zip: "23452",
+    npi: "1700894649", ncpdp: "4827486",
+    dea: "FP367829", taxId: "465564676",
+    stateLicense: "2010031136",
+    established: "2013-03-19",
+    phone: "757-934-0533", fax: "757-228-3991",
+    hours: "M-F 9:00am - 5:30pm"
+  },
+  "Greenville, SC": {
+    businessName: "PI Stores, Inc.",
+    dba: "Pharmacy Innovations",
+    address: "640 Congaree Rd",
+    city: "Greenville", stateAbbr: "SC", zip: "29607",
+    npi: "1982919874", ncpdp: "4229832",
+    dea: "FP1578078", taxId: "300520121",
+    stateLicense: "10460",
+    established: "2010-08-01",
+    phone: "864-241-0477", fax: "864-241-0843",
+    hours: "M-F 9:00am - 5:30pm"
+  },
+  "Tucson, AZ": {
+    businessName: "Jones Drug, Inc.",
+    dba: "Reed's Pharmacy",
+    address: "2729 E Speedway Blvd",
+    city: "Tucson", stateAbbr: "AZ", zip: "85716",
+    npi: "1174691810", ncpdp: "322886",
+    dea: "FR2805476", taxId: "86-0437807",
+    stateLicense: "Y009543",
+    established: "2023-04-01",
+    phone: "520-318-4421", fax: "520-318-1054",
+    hours: "M-F 9:00am - 6:00pm, Sat 9:00am - 1:00pm"
+  },
+  "Lancaster, PA": {
+    businessName: "D&R Stores, Inc",
+    dba: "Custom Prescriptions of Lancaster County",
+    address: "902 N Duke St",
+    city: "Lancaster", stateAbbr: "PA", zip: "17602",
+    npi: "1487857207", ncpdp: "3988473",
+    dea: "FD5031048", taxId: "99-4217328",
+    stateLicense: "99481682",
+    established: "2024-09-01",
+    phone: "717-393-0518", fax: "717-393-0519",
+    hours: "M-F 9:00am - 5:30pm"
+  },
+  "Denton, TX": {
+    businessName: "Texas Community Pharmacy Services",
+    dba: "Community Pharmacy",
+    address: "4400 Teasley Ln Ste 100",
+    city: "Denton", stateAbbr: "TX", zip: "76210-4651",
+    npi: "1679515977", ncpdp: "4576142",
+    dea: "BC7526811", taxId: "75-2955796",
+    stateLicense: "21325",
+    established: "2025-12-01",
+    phone: "940-484-4400", fax: "940-898-1986",
+    hours: "M-F 8:30am - 6:00pm, Sat 9:00am - 2:00pm"
+  },
+  "Flower Mound, TX": {
+    businessName: "SLS Health Inc",
+    dba: "Community Pharmacy",
+    address: "1001 Cross Timbers Rd Ste 1170",
+    city: "Flower Mound", stateAbbr: "TX", zip: "75028-8817",
+    npi: "1043253206", ncpdp: "4504812",
+    dea: "BF5725126", taxId: "75-2742172",
+    stateLicense: "18864",
+    established: "2025-12-01",
+    phone: "972-355-4614", fax: "",
+    hours: "M-F 9:00am - 6:00pm, Sat 9:00am - 1:00pm"
+  },
+  "Corinth, TX": {
+    businessName: "Corinth Community Pharmacy, LLC",
+    dba: "Community Pharmacy",
+    address: "3001 F.M. 2181 Ste 450",
+    city: "Corinth", stateAbbr: "TX", zip: "76210",
+    npi: "1609403716", ncpdp: "5930931",
+    dea: "FC9171733", taxId: "83-4349700",
+    stateLicense: "33200",
+    established: "2025-12-01",
+    phone: "940-487-7455", fax: "",
+    hours: "M-F 8:30am - 6:00pm, Sat 11:00am - 2:00pm"
+  }
+};
+
 const SEED_DATA = {
   "Erie, PA": [
     {s:"Alabama",n:"113900",e:"2026-12-31",h:"Erie",i:"2012-05-01",v:"2025-10-17"},
@@ -1798,6 +1934,7 @@ function filterAndNav(urgency, location) {
 // ===== LOCATIONS GRID =====
 function renderLocationsGrid() {
   const html = LOCATIONS.map(loc => {
+    const info = LOCATION_INFO[loc] || {};
     const locLics = licenses.filter(l => l.location === loc);
     const withExp = locLics.filter(l => l.expirationDate);
     const expired = withExp.filter(l => daysUntilExp(l.expirationDate) < 0).length;
@@ -1807,10 +1944,15 @@ function renderLocationsGrid() {
 
     return `<div class="location-card" onclick="openLocationDetail('${loc}')">
       <div class="location-card-header">
-        <h3>${loc}</h3>
-        <div class="loc-count">${locLics.length} licenses</div>
+        <h3>${info.dba || loc}</h3>
+        <div class="loc-count">${loc} &middot; ${locLics.length} licenses</div>
       </div>
       <div class="location-card-body">
+        <div style="font-size:12px;color:var(--gray-500);margin-bottom:8px;border-bottom:1px solid var(--gray-100);padding-bottom:8px">
+          ${info.businessName ? '<div><strong>'+info.businessName+'</strong></div>' : ''}
+          ${info.address ? '<div>'+info.address+', '+info.city+', '+info.stateAbbr+' '+info.zip+'</div>' : ''}
+          ${info.phone ? '<div>'+info.phone+'</div>' : ''}
+        </div>
         <div class="loc-stat-row"><span class="loc-stat-label">Expired</span><span class="${expired ? 'loc-urgent' : 'loc-ok'}">${expired}</span></div>
         <div class="loc-stat-row"><span class="loc-stat-label">Expiring &lt; 90 days</span><span class="${expSoon ? 'loc-warning' : 'loc-ok'}">${expSoon}</span></div>
         <div class="loc-stat-row"><span class="loc-stat-label">Current</span><span class="loc-ok">${current}</span></div>
@@ -1822,24 +1964,109 @@ function renderLocationsGrid() {
 }
 
 function openLocationDetail(loc) {
-  document.getElementById('locDetailTitle').textContent = loc;
+  const info = LOCATION_INFO[loc] || {};
+  document.getElementById('locDetailTitle').textContent = (info.dba || loc) + ' — ' + loc;
   const locLics = licenses.filter(l => l.location === loc);
 
   let html = '<div class="sub-tabs" id="locSubTabs">';
-  html += '<button class="sub-tab active" onclick="showLocTab(this,\'locLicenses\')">Licenses (' + locLics.length + ')</button>';
+  html += '<button class="sub-tab active" onclick="showLocTab(this,\'locOverview\')">Overview</button>';
+  html += '<button class="sub-tab" onclick="showLocTab(this,\'locLicenses\')">Licenses (' + locLics.length + ')</button>';
   html += '<button class="sub-tab" onclick="showLocTab(this,\'locCredentials\')">Credentials</button>';
   html += '</div>';
 
+  // Overview sub-tab
+  html += '<div id="locOverview">';
+  if (info.businessName) {
+    html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px">';
+    // Business Info
+    html += '<div class="card"><div class="card-header"><h2>Business Information</h2></div><div class="card-body"><div class="detail-grid">';
+    html += detailRow('Legal Name', info.businessName);
+    html += detailRow('DBA', info.dba);
+    html += detailRow('Address', info.address + '<br>' + info.city + ', ' + info.stateAbbr + ' ' + info.zip);
+    html += detailRow('Phone', info.phone);
+    if (info.fax) html += detailRow('Fax', info.fax);
+    html += detailRow('Hours', info.hours);
+    html += detailRow('Established', formatDate(info.established));
+    html += '</div></div></div>';
+
+    // Identifiers
+    html += '<div class="card"><div class="card-header"><h2>Key Identifiers</h2></div><div class="card-body"><div class="detail-grid">';
+    html += detailRow('NPI', '<code style="font-size:15px;font-weight:600">' + info.npi + '</code>');
+    html += detailRow('NCPDP', '<code style="font-size:15px;font-weight:600">' + info.ncpdp + '</code>');
+    html += detailRow('DEA', '<code style="font-size:15px;font-weight:600">' + info.dea + '</code>');
+    html += detailRow('Tax ID / EIN', '<code style="font-size:15px;font-weight:600">' + info.taxId + '</code>');
+    html += detailRow('State License #', '<code style="font-size:15px;font-weight:600">' + info.stateLicense + '</code>');
+    html += '</div></div></div>';
+    html += '</div>';
+  }
+
+  // Key licenses with links
+  html += '<div class="card" style="margin-bottom:16px"><div class="card-header"><h2>Key Licenses &amp; Current Copies</h2></div><div class="card-body">';
+  const keyTypes = ['Pharmacy','DEA','Controlled Substance','Sterile Compounding'];
+  const keyLics = locLics.filter(l => keyTypes.includes(l.type) || l.state.match(/^(DEA|NPI|NABP)/));
+  if (keyLics.length) {
+    html += '<table class="data-table"><thead><tr><th>License</th><th>Number</th><th>Expiration</th><th>Status</th><th>Copy</th></tr></thead><tbody>';
+    keyLics.sort((a,b) => new Date(a.expirationDate || '2099-12-31') - new Date(b.expirationDate || '2099-12-31')).forEach(l => {
+      const days = daysUntilExp(l.expirationDate);
+      const hasFile = l.licenseCopyUrl || l.licenseCopy;
+      html += `<tr>
+        <td><strong>${l.state}</strong></td>
+        <td><code>${l.licenseNumber}</code></td>
+        <td>${formatDate(l.expirationDate) || 'N/A'} ${urgencyBadge(days, l.expirationDate)}</td>
+        <td>${statusBadge(l.renewalStatus) || '<span class="status-badge status-current">Current</span>'}</td>
+        <td>${hasFile
+          ? '<a href="'+(l.licenseCopyUrl || l.licenseCopy)+'" '+(l.licenseCopyUrl ? 'target="_blank"' : 'download="'+escHtml(l.licenseCopyName)+'"')+' class="btn btn-sm btn-secondary" style="font-size:11px">View Copy</a>'
+          : '<span style="font-size:12px;color:var(--gray-400)">No copy uploaded</span>'
+        }</td>
+      </tr>`;
+    });
+    html += '</tbody></table>';
+  } else {
+    html += '<div class="empty-state">No key licenses found</div>';
+  }
+  html += '</div></div>';
+
+  // Personnel at this location
+  const locPersonnel = [];
+  const seen = new Set();
+  locLics.filter(l => l.type === 'Pharmacist' || l.type === 'Technician').forEach(l => {
+    const name = l.licenseHolder || l.state.replace(/ - Pharmacist| - Technician/i,'').replace(/^.*? - /,'');
+    const key = name.toLowerCase();
+    if (!seen.has(key) && name.length > 2) {
+      seen.add(key);
+      const theirLics = locLics.filter(x => x.licenseHolder === l.licenseHolder || x.state.includes(name));
+      locPersonnel.push({ name, type: l.type, licenses: theirLics });
+    }
+  });
+  if (locPersonnel.length) {
+    html += '<div class="card"><div class="card-header"><h2>Personnel</h2></div><div class="card-body">';
+    html += '<table class="data-table"><thead><tr><th>Name</th><th>Role</th><th>License(s)</th><th>Next Expiration</th></tr></thead><tbody>';
+    locPersonnel.forEach(p => {
+      const nextExp = p.licenses.filter(l => l.expirationDate && daysUntilExp(l.expirationDate) >= 0)
+        .sort((a,b) => new Date(a.expirationDate) - new Date(b.expirationDate))[0];
+      html += `<tr>
+        <td><strong>${p.name}</strong></td>
+        <td>${p.type}</td>
+        <td>${p.licenses.map(l => l.licenseNumber).join(', ')}</td>
+        <td>${nextExp ? formatDate(nextExp.expirationDate) + ' ' + urgencyBadge(daysUntilExp(nextExp.expirationDate), nextExp.expirationDate) : 'N/A'}</td>
+      </tr>`;
+    });
+    html += '</tbody></table></div></div>';
+  }
+  html += '</div>';
+
   // Licenses sub-tab
-  html += '<div id="locLicenses"><table class="data-table"><thead><tr><th>State/Name</th><th>License #</th><th>Type</th><th>Expiration</th><th>Urgency</th><th>Status</th></tr></thead><tbody>';
+  html += '<div id="locLicenses" style="display:none"><table class="data-table"><thead><tr><th>State/Name</th><th>License #</th><th>Type</th><th>Expiration</th><th>Urgency</th><th>Status</th><th>Copy</th></tr></thead><tbody>';
   locLics.sort((a,b) => new Date(a.expirationDate || '2099-12-31') - new Date(b.expirationDate || '2099-12-31')).forEach(l => {
     const days = daysUntilExp(l.expirationDate);
-    html += `<tr onclick="closeModal('locationDetailModal');openLicenseDetail(${l.id})">
+    const hasFile = l.licenseCopyUrl || l.licenseCopy;
+    html += `<tr onclick="closeModal('locationDetailModal');openLicenseDetail('${l.id}')">
       <td>${l.state}</td><td>${l.licenseNumber}</td>
       <td><span class="badge badge-${l.type.toLowerCase().replace(/\s+/g,'-')}">${l.type}</span></td>
       <td>${formatDate(l.expirationDate) || 'N/A'}</td>
       <td>${urgencyBadge(days, l.expirationDate)}</td>
       <td>${statusBadge(l.renewalStatus)}</td>
+      <td>${hasFile ? '<span style="color:var(--success);font-size:12px">Uploaded</span>' : ''}</td>
     </tr>`;
   });
   html += '</tbody></table></div>';
@@ -1854,7 +2081,7 @@ function openLocationDetail(loc) {
         <td><strong>${l.state}</strong><br><small>${l.licenseNumber}</small></td>
         <td>${l.boardWebsite ? '<a href="'+(l.boardWebsite.startsWith('http')?l.boardWebsite:'https://'+l.boardWebsite)+'" target="_blank" style="color:var(--primary);font-size:12px;">'+l.boardWebsite.substring(0,40)+'</a>' : ''}</td>
         <td>${l.boardUsername || ''}</td>
-        <td>${l.boardPassword ? '<span class="cred-masked" id="pw_'+l.id+'">••••••••</span><button class="reveal-btn" onclick="togglePw('+l.id+',\''+escHtml(l.boardPassword)+'\')">show</button>' : ''}</td>
+        <td>${l.boardPassword ? '<span class="cred-masked" id="pw_'+l.id+'">••••••••</span><button class="reveal-btn" onclick="togglePw(\''+l.id+'\',\''+escHtml(l.boardPassword)+'\')">show</button>' : ''}</td>
         <td style="font-size:12px;">${l.boardEmail || ''}</td>
       </tr>`;
     });
@@ -1871,7 +2098,7 @@ function openLocationDetail(loc) {
 function showLocTab(btn, tabId) {
   btn.parentElement.querySelectorAll('.sub-tab').forEach(t => t.classList.remove('active'));
   btn.classList.add('active');
-  ['locLicenses','locCredentials'].forEach(id => {
+  ['locOverview','locLicenses','locCredentials'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.style.display = id === tabId ? 'block' : 'none';
   });
