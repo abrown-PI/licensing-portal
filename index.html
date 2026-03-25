@@ -273,6 +273,8 @@
   </div>
   <div class="nav-actions">
     <span class="user-info" id="userInfo"></span>
+    <span id="spStatus" style="font-size:11px;padding:3px 8px;border-radius:12px;display:none"></span>
+    <button class="btn btn-sm btn-accent" id="migrateBtn" onclick="migrateToSharePoint()" style="display:none" title="Migrate local data to SharePoint">Migrate to SP</button>
     <button class="btn btn-sm btn-primary" id="signInBtn" onclick="msalSignIn()" style="display:none">Sign in with 365</button>
     <button class="btn btn-sm btn-secondary" id="signOutBtn" onclick="msalSignOut()" style="display:none">Sign Out</button>
   </div>
@@ -761,6 +763,9 @@ const SP_SITE_URL = 'https://pharmacyinnovationsnet.sharepoint.com/sites/Pixe';
 const SP_LIST_LICENSES = 'Licensing_Licenses';
 const SP_LIST_INSPECTIONS = 'Licensing_Inspections';
 const SP_LIST_DOCUMENTS = 'Licensing_Documents';
+const SP_DOC_LIBRARY = 'Licensing_Files';
+const SP_CFG_KEY = 'licensing_sp_config';
+const GRAPH_BASE = 'https://graph.microsoft.com/v1.0';
 
 let msalInstance = null;
 let msalAccount = null;
@@ -768,6 +773,8 @@ let signedInUser = null;
 let isAdmin = false;
 let spSiteId = null;
 let spListIds = {};
+let spDriveId = null;
+let spConnected = false;
 
 // ===== DATA STORE =====
 const DATA_KEY = 'licensing_portal_data';
@@ -788,90 +795,90 @@ const SEED_DATA = {
   "Erie, PA": [
     {s:"Alabama",n:"113900",e:"2026-12-31",h:"Erie",i:"2012-05-01",v:"2025-10-17"},
     {s:"Alabama - Jenn Pharmacist",n:"22233",e:"2026-12-31",h:"Jenn",i:"2021-11-22",v:"2025-10-17",rs:"SUBMITTED-WAITING"},
-    {s:"Alaska",n:"105296",e:"2026-06-30",h:"Erie",i:"2015-10-23",v:"2025-10-17",w:"Division of Corporations, Business and Professional Licensing",u:"EriePA",p:"Innov@12"},
+    {s:"Alaska",n:"105296",e:"2026-06-30",h:"Erie",i:"2015-10-23",v:"2025-10-17",w:"Division of Corporations, Business and Professional Licensing"},
     {s:"Alaska - Jenn Pharmacist",n:"226200",e:"2026-06-30",h:"Jenn",i:"2024-09-03",v:"2025-10-17"},
-    {s:"Arizona",n:"Y007077",e:"2027-10-31",h:"Erie",i:"2016-11-15",v:"2025-10-17",w:":: AZBOP Online Applications ::",u:"EriePA",p:"Innov@12",em:"Licensing@pharmacyinnovations.net",rs:"NEEDS DONE ASAP"},
-    {s:"Arkansas",n:"OS02558",e:"2027-12-31",h:"Erie",i:"2014-10-20",f:"2 years",v:"2025-10-17",w:"arbopharmv7prod.glsuite.us/ui/LicenseeHome/Index",u:"contact@pharmacyinnovations.net",p:"PharmInno123!",nt:"Pending - last checked 11/10"},
+    {s:"Arizona",n:"Y007077",e:"2027-10-31",h:"Erie",i:"2016-11-15",v:"2025-10-17",w:":: AZBOP Online Applications ::",em:"Licensing@pharmacyinnovations.net",rs:"NEEDS DONE ASAP"},
+    {s:"Arkansas",n:"OS02558",e:"2027-12-31",h:"Erie",i:"2014-10-20",f:"2 years",v:"2025-10-17",w:"arbopharmv7prod.glsuite.us/ui/LicenseeHome/Index",nt:"Pending - last checked 11/10"},
     {s:"Arkansas - Jenn Pharmacist",n:"PD15996",e:"2027-12-31",h:"Jenn",i:"2022-02-08",v:"2025-10-17",rs:"NEED INFO"},
     {s:"California",n:"1259",e:"2026-12-01",h:"Erie",i:"2012-12-06",v:"2025-10-17",nt:"Paper renewal"},
     {s:"California - Sterile",n:"NSC 100912",e:"",h:"",nt:"N/A",rs:"NEEDS DONE NEXT 3 MONTHS"},
-    {s:"Colorado",n:"Osp.0005956",e:"2026-10-31",h:"Erie",i:"2011-05-13",v:"2025-10-17",w:"Colorado Division of Professions and Occupations Online Services",u:"PHAR809361",p:"Blake34!@",em:"Licensing@pharmacyinnovations.net"},
-    {s:"Connecticut",n:"PCN.0002406",e:"2026-08-31",h:"Erie",i:"2012-11-28",f:"1 year",v:"2025-10-17",w:"eLicense Online",u:"Phar1367503",p:"Erieinnov1",em:"Licensing@pharmacyinnovations.net"},
-    {s:"Delaware",n:"A9-0001193",e:"2026-09-30",h:"Erie",i:"2013-01-02",v:"2025-10-17",w:"Dashboard | eLicense",u:"contact@pharmacyinnovations.net",p:"PharmInnov!1",nt:"*Not all the way set up"},
+    {s:"Colorado",n:"Osp.0005956",e:"2026-10-31",h:"Erie",i:"2011-05-13",v:"2025-10-17",w:"Colorado Division of Professions and Occupations Online Services",em:"Licensing@pharmacyinnovations.net"},
+    {s:"Connecticut",n:"PCN.0002406",e:"2026-08-31",h:"Erie",i:"2012-11-28",f:"1 year",v:"2025-10-17",w:"eLicense Online",em:"Licensing@pharmacyinnovations.net"},
+    {s:"Delaware",n:"A9-0001193",e:"2026-09-30",h:"Erie",i:"2013-01-02",v:"2025-10-17",w:"Dashboard | eLicense",nt:"*Not all the way set up"},
     {s:"Delaware - Controlled Substances",n:"PH-0009270",e:"2027-06-30",h:"Erie",i:"2013-01-02",f:"2 years",v:"2025-10-17"},
     {s:"District of Columbia",n:"NRX1100490",e:"2027-05-31",h:"Erie",i:"2013-02-19",v:"2025-10-17"},
     {s:"District of Columbia - Control Sub",n:"NCP0000069",e:"2027-05-31",h:"Erie",i:"2013-02-19",v:"2025-10-17"},
-    {s:"Florida",n:"PH 24718",e:"2027-02-28",h:"Erie",i:"2010-06-28",f:"2 years",v:"2025-10-17",w:"My Dashboard",u:"contact@pharmacyinnovations.net",p:"Innovations@1",nt:"Nancy",em:"contact@pharmacyinnovations.net"},
-    {s:"Florida - Sterile",n:"NSC374",e:"2027-02-28",h:"Erie",i:"2024-08-25",f:"2 years",v:"2025-10-17",w:"My Dashboard",u:"contact@pharmacyinnovations.net",p:"Innovations@1",nt:"Nancy",em:"contact@pharmacyinnovations.net"},
-    {s:"Georgia",n:"PHNR000374",e:"2027-06-30",h:"Erie",i:"2015-03-26",f:"2 years",v:"2025-10-17",u:"ErieGA",p:"PharmInnov@1"},
-    {s:"Hawaii",n:"PMP - 821",e:"2027-12-31",h:"Erie",i:"2012-12-17",f:"2 years",v:"2025-10-17",w:"https://mypvl.dcca.hawaii.gov/my-licenses/",u:"contact@pharmacyinnovations.net",p:"Plant2936?",nt:"Renewal period starts Nov 3"},
-    {s:"Hawaii - Control Sub",n:"E11142",e:"2027-03-31",h:"Erie",f:"1 year",v:"2026-02-03",w:"Narcotics Enforcement Division - Registration Renewal",u:"contact@pharmacyinnovations.net",p:"Plant2936?",nt:"Renewal opens 60 days prior"},
-    {s:"Idaho",n:"20134MS",e:"2026-12-31",h:"Erie",i:"2023-02-17",v:"2025-10-17",w:"Online Services",u:"contact@pharmacyinnovations.net",p:"PharmInnov@1",em:"Licensing@pharmacyinnovations.net"},
+    {s:"Florida",n:"PH 24718",e:"2027-02-28",h:"Erie",i:"2010-06-28",f:"2 years",v:"2025-10-17",w:"My Dashboard",nt:"Nancy",em:"contact@pharmacyinnovations.net"},
+    {s:"Florida - Sterile",n:"NSC374",e:"2027-02-28",h:"Erie",i:"2024-08-25",f:"2 years",v:"2025-10-17",w:"My Dashboard",nt:"Nancy",em:"contact@pharmacyinnovations.net"},
+    {s:"Georgia",n:"PHNR000374",e:"2027-06-30",h:"Erie",i:"2015-03-26",f:"2 years",v:"2025-10-17"},
+    {s:"Hawaii",n:"PMP - 821",e:"2027-12-31",h:"Erie",i:"2012-12-17",f:"2 years",v:"2025-10-17",w:"https://mypvl.dcca.hawaii.gov/my-licenses/",nt:"Renewal period starts Nov 3"},
+    {s:"Hawaii - Control Sub",n:"E11142",e:"2027-03-31",h:"Erie",f:"1 year",v:"2026-02-03",w:"Narcotics Enforcement Division - Registration Renewal",nt:"Renewal opens 60 days prior"},
+    {s:"Idaho",n:"20134MS",e:"2026-12-31",h:"Erie",i:"2023-02-17",v:"2025-10-17",w:"Online Services",em:"Licensing@pharmacyinnovations.net"},
     {s:"Idaho - Jenn Non-Resident PIC",n:"PR64510",e:"2028-03-26",h:"Jenn",i:"2021-12-09",v:"2025-10-17",w:"Online Services"},
-    {s:"Illinois",n:"054017924",e:"2028-03-31",h:"Erie",i:"2012-04-26",v:"2025-10-17",w:"eLicense Online",u:"054017924",p:"PharmInnov@1",nt:"Answers: Cheeseburgers, Erie, Florida"},
-    {s:"Illinois - Control Sub",n:"320010298",e:"2028-03-31",h:"Erie",i:"2012-04-26",v:"2025-10-17",u:"054017925",p:"PharmInnov@1"},
+    {s:"Illinois",n:"054017924",e:"2028-03-31",h:"Erie",i:"2012-04-26",v:"2025-10-17",w:"eLicense Online",nt:"Answers: Cheeseburgers, Erie, Florida"},
+    {s:"Illinois - Control Sub",n:"320010298",e:"2028-03-31",h:"Erie",i:"2012-04-26",v:"2025-10-17"},
     {s:"Illinois - Jenn Pharmacist",n:"51.308177",e:"2028-03-31",h:"Jenn"},
-    {s:"Indiana",n:"64000968A",e:"2027-12-31",h:"Erie",i:"2009-06-03",f:"2 years",v:"2025-10-17",w:"Indiana Licensing Enterprise",u:"licensing@pharmacyinnovations.net",p:"PharmInnov@1"},
-    {s:"Iowa",n:"4777",e:"2026-12-31",h:"Erie",i:"2016-01-01",f:"1 year",v:"2025-11-17",w:":: IBOP Online Applications ::",u:"EriePA",p:"Blake34!@!"},
-    {s:"Iowa - Control Sub",n:"1108359",e:"2027-12-31",h:"Erie",i:"2018-01-10",f:"2 years",v:"2025-11-17",w:":: IBOP Online Applications ::",u:"EriePA",p:"Blake34!@!"},
+    {s:"Indiana",n:"64000968A",e:"2027-12-31",h:"Erie",i:"2009-06-03",f:"2 years",v:"2025-10-17",w:"Indiana Licensing Enterprise"},
+    {s:"Iowa",n:"4777",e:"2026-12-31",h:"Erie",i:"2016-01-01",f:"1 year",v:"2025-11-17",w:":: IBOP Online Applications ::"},
+    {s:"Iowa - Control Sub",n:"1108359",e:"2027-12-31",h:"Erie",i:"2018-01-10",f:"2 years",v:"2025-11-17",w:":: IBOP Online Applications ::"},
     {s:"Iowa - Jenn Non-Resident PIC",n:"51643",e:"2026-12-31",h:"Jenn"},
-    {s:"Kansas",n:"22-12914",e:"2026-06-30",h:"Erie",i:"2012-10-05",f:"1 year",v:"2025-10-17",w:"ksbop.elicensesoftware.com/portal_logon.aspx",u:"EriePA",p:"Innovations1",nt:"Inspection: NABP VPP, Satisfactory home state inspection"},
+    {s:"Kansas",n:"22-12914",e:"2026-06-30",h:"Erie",i:"2012-10-05",f:"1 year",v:"2025-10-17",w:"ksbop.elicensesoftware.com/portal_logon.aspx",nt:"Inspection: NABP VPP, Satisfactory home state inspection"},
     {s:"Kansas - Katie Pharmacist",n:"1-116337",e:"2027-06-30",h:"Katie"},
     {s:"Kentucky",n:"PA1941",e:"2026-06-30",h:"Erie",i:"2015-05-01",f:"1 year",v:"2025-10-17",w:"Licensure Gateway | Kentucky Board of Pharmacy",nt:"Can access from Katie's personal login"},
     {s:"Kentucky - Katie Pharmacist",n:"022454",e:"2027-02-28",h:"Katie"},
-    {s:"Louisiana",n:"PHY.007181-NR",e:"2026-12-31",h:"Erie",i:"2015-09-25",v:"2025-10-17",w:"LABP",u:"177333",p:"PharmInnov!1",nt:"Answers: Blue, Rich, 2535",em:"Licensing@pharmacyinnovations.net"},
+    {s:"Louisiana",n:"PHY.007181-NR",e:"2026-12-31",h:"Erie",i:"2015-09-25",v:"2025-10-17",w:"LABP",nt:"Answers: Blue, Rich, 2535",em:"Licensing@pharmacyinnovations.net"},
     {s:"Louisiana - Jenn Pharmacist",n:"PST.024177",e:"2026-12-31",h:"Jenn"},
     {s:"Louisiana - Dante Pharmacist",n:"PST.025271",e:"2026-12-31",h:"Dante"},
-    {s:"Maine",n:"MO40001370",e:"2026-12-31",h:"Erie",i:"2013-03-06",v:"2025-10-17",w:"Board of Pharmacy - Licensing",u:"contact@pharmacyinnovations.net",nt:"Access Code 574799",em:"Licensing@pharmacyinnovations.net"},
-    {s:"Maryland",n:"P05317",e:"2026-05-31",h:"Erie",i:"2010-04-19",v:"2025-10-17",w:"Pages - MDH-BOP",u:"P05317",p:"Innov@tions12",em:"contact@pharmacyinnovations.net"},
+    {s:"Maine",n:"MO40001370",e:"2026-12-31",h:"Erie",i:"2013-03-06",v:"2025-10-17",w:"Board of Pharmacy - Licensing",nt:"Access Code 574799",em:"Licensing@pharmacyinnovations.net"},
+    {s:"Maryland",n:"P05317",e:"2026-05-31",h:"Erie",i:"2010-04-19",v:"2025-10-17",w:"Pages - MDH-BOP",em:"contact@pharmacyinnovations.net"},
     {s:"Maryland - Control Sub",n:"470182",e:"2027-03-31",h:"Erie"},
     {s:"Maryland - Debbie Pharmacist",n:"21539",e:"2026-11-30",h:"Debbie"},
-    {s:"Massachusetts",n:"NDS31918",e:"2027-12-31",h:"Erie",i:"2025-05-12",f:"2 years",v:"2025-10-25",w:"Health Professions Licensing System",u:"PharmInno2936",p:"Pharmacy2025!"},
-    {s:"Massachusetts - Complex NonSterile",n:"NDS31918NS",e:"2026-12-31",h:"Erie",i:"2025-07-08",f:"1 year",v:"2025-10-25",w:"Health Professions Licensing System",u:"PharmInno2936",p:"Pharmacy2025!"},
-    {s:"Massachusetts - Sterile",n:"NDS31918SC",e:"2026-12-31",h:"Erie",i:"2025-06-06",v:"2025-10-25",w:"Health Professions Licensing System",u:"PharmInno2936",p:"Pharmacy2025!"},
-    {s:"Massachusetts - Sterile Additional",n:"NDS31918SC-01",e:"2026-12-31",h:"Erie",i:"2025-06-11",v:"2025-10-25",w:"Health Professions Licensing System",u:"PharmInno2936",p:"Pharmacy2025!"},
+    {s:"Massachusetts",n:"NDS31918",e:"2027-12-31",h:"Erie",i:"2025-05-12",f:"2 years",v:"2025-10-25",w:"Health Professions Licensing System"},
+    {s:"Massachusetts - Complex NonSterile",n:"NDS31918NS",e:"2026-12-31",h:"Erie",i:"2025-07-08",f:"1 year",v:"2025-10-25",w:"Health Professions Licensing System"},
+    {s:"Massachusetts - Sterile",n:"NDS31918SC",e:"2026-12-31",h:"Erie",i:"2025-06-06",v:"2025-10-25",w:"Health Professions Licensing System"},
+    {s:"Massachusetts - Sterile Additional",n:"NDS31918SC-01",e:"2026-12-31",h:"Erie",i:"2025-06-11",v:"2025-10-25",w:"Health Professions Licensing System"},
     {s:"Massachusetts - Tyler Pharmacist",n:"PH1002201",e:"2026-12-31",h:"Tyler"},
-    {s:"Michigan",n:"5301009609",e:"2027-06-21",h:"Erie",i:"2011-06-21",f:"2 years",w:"Accela Citizen Access",u:"PIErie",p:"Innov@12",em:"contact@pharmacyinnovations.net"},
+    {s:"Michigan",n:"5301009609",e:"2027-06-21",h:"Erie",i:"2011-06-21",f:"2 years",w:"Accela Citizen Access",em:"contact@pharmacyinnovations.net"},
     {s:"Michigan - Control Sub",n:"5315051404",e:"2027-06-21",h:"Erie"},
     {s:"Michigan - Jenn Pharmacist",n:"5302413910",e:"2027-10-25",h:"Jenn"},
     {s:"Michigan - Control Sub - Jenn",n:"5315229330",e:"2027-10-25",h:"Jenn"},
     {s:"Michigan - Dante Pharmacist",n:"5302416457",e:"2026-08-01",h:"Dante"},
     {s:"Michigan - Control Sub - Dante",n:"5315252163",e:"2026-08-01",h:"Dante"},
-    {s:"Minnesota",n:"263962",e:"2026-06-30",h:"Erie",i:"2012-09-20",v:"2025-10-17",w:"Minnesota Board of Pharmacy",u:"walkerks",p:"PharmInno1234!",em:"licensing@pharmacyinnovations.net",nt:"Inspection: NABP VPP"},
+    {s:"Minnesota",n:"263962",e:"2026-06-30",h:"Erie",i:"2012-09-20",v:"2025-10-17",w:"Minnesota Board of Pharmacy",em:"licensing@pharmacyinnovations.net",nt:"Inspection: NABP VPP"},
     {s:"Minnesota - Alison Pharmacist",n:"125901",e:"2027-02-28",h:"Alison"},
     {s:"Mississippi",n:"08910/7.1",e:"2027-12-31",h:"Erie",i:"2011-04-05",f:"2 years",nt:"Can access from Jenn's personal login, pain in ass"},
     {s:"Mississippi - Control Sub",n:"CS-08910",e:"2026-12-31",h:"Erie"},
     {s:"Mississippi - Compounding Certificate",n:"CC-08910",e:"2027-12-31",h:"Erie"},
     {s:"Mississippi - Jenn Pharmacist",n:"T-100464",e:"2026-12-31",h:"Jenn"},
     {s:"Mississippi - Control Sub - Jenn",n:"CS-18989",e:"2026-12-31",h:"Jenn"},
-    {s:"Missouri",n:"2011013667",e:"2027-10-31",h:"Erie",i:"2011-05-16",f:"2 years",w:"Login | MO PRO",u:"licensing@pharmacyinnovations.net",p:"Pharmacy!1234",nt:"Feiock, Thayer, Erie"},
-    {s:"Montana",n:"PHA-MOP-LIC-15116",e:"2026-11-30",h:"Erie",i:"2013-03-27",f:"1 year",v:"2025-10-17",w:"State of Montana",u:"emilys@pharmacyinnovations.net",p:"Pharmacy@1234",nt:"Thayer"},
+    {s:"Missouri",n:"2011013667",e:"2027-10-31",h:"Erie",i:"2011-05-16",f:"2 years",w:"Login | MO PRO",nt:"Feiock, Thayer, Erie"},
+    {s:"Montana",n:"PHA-MOP-LIC-15116",e:"2026-11-30",h:"Erie",i:"2013-03-27",f:"1 year",v:"2025-10-17",w:"State of Montana",nt:"Thayer"},
     {s:"Nebraska",n:"912",e:"2026-07-01",h:"Erie",i:"2015-03-31",f:"1 year",nt:"No online login, paper renewal"},
     {s:"Nebraska - Jenn Pharmacist",n:"17307",e:"2028-01-01",h:"Jenn"},
-    {s:"Nevada",n:"PH03087",e:"2026-10-31",h:"Erie",i:"2014-01-28",w:"https://online.nvbop.org/",u:"emilys@pharmacyinnovations.net",p:"Innov@12",nt:"No where on site to change info"},
+    {s:"Nevada",n:"PH03087",e:"2026-10-31",h:"Erie",i:"2014-01-28",w:"https://online.nvbop.org/",nt:"No where on site to change info"},
     {s:"Nevada - Jenn Pharmacist",n:"21805",e:"2027-10-31",h:"Jenn"},
-    {s:"New Hampshire",n:"NR0894",e:"2026-12-31",h:"Erie",i:"2012-07-17",f:"2 years",v:"2025-10-30",w:"https://forms.nh.gov/license/Login.aspx",u:"eriepa",p:"Innov@12",em:"contact@pharmacyinnovations.net"},
-    {s:"New Jersey",n:"28RO00102000",e:"2026-06-30",h:"Erie",i:"2014-09-20",f:"1 year",v:"2025-10-30",w:"https://newjersey.mylicense.com/eGov/Login.aspx",u:"eriepa",p:"Pharm2936!"},
-    {s:"New Mexico",n:"PH00003402",e:"2027-12-31",h:"Erie",i:"2012-06-21",w:"Home",u:"contact@pharmacyinnovations.net",p:"PharmInno@1",nt:"**pain in ass"},
+    {s:"New Hampshire",n:"NR0894",e:"2026-12-31",h:"Erie",i:"2012-07-17",f:"2 years",v:"2025-10-30",w:"https://forms.nh.gov/license/Login.aspx",em:"contact@pharmacyinnovations.net"},
+    {s:"New Jersey",n:"28RO00102000",e:"2026-06-30",h:"Erie",i:"2014-09-20",f:"1 year",v:"2025-10-30",w:"https://newjersey.mylicense.com/eGov/Login.aspx"},
+    {s:"New Mexico",n:"PH00003402",e:"2027-12-31",h:"Erie",i:"2012-06-21",w:"Home",nt:"**pain in ass"},
     {s:"New Mexico - Control Sub",n:"CS00217847",e:"2027-02-28",h:"Erie"},
     {s:"New York",n:"031786",e:"2028-01-31",h:"Erie",i:"2013-02-05",f:"3 years",v:"2025-10-09",w:"NY BOP",nt:"Not sure if you can login to the site?"},
     {s:"New York - Michelle Pharmacist",n:"53093",e:"2026-04-30",h:"Michelle"},
     {s:"New York - Eli Pharmacist",n:"69274",e:"2028-03-31",h:"Eli"},
     {s:"New York - Jenn Pharmacist",n:"Pending",e:"",h:"Jenn"},
-    {s:"North Carolina",n:"12699",e:"2026-12-31",h:"Erie",i:"2015-10-05",f:"1 year",w:"Facility Management | NC Board of Pharmacy",u:"12699",p:"2699",nt:"Open November 1"},
+    {s:"North Carolina",n:"12699",e:"2026-12-31",h:"Erie",i:"2015-10-05",f:"1 year",w:"Facility Management | NC Board of Pharmacy",nt:"Open November 1"},
     {s:"North Dakota",n:"PHAR1178",e:"2026-06-30",h:"Erie",i:"2015-07-01",f:"1 year",nt:"Not sure if you can login to the site?"},
     {s:"Ohio (Dangerous Drugs) (TDDD)",n:"NRP.021963300-03",e:"2027-03-31",h:"Erie",i:"2009-04-28",f:"2 years",w:"Home",nt:"Not sure if you can login to the site?"},
     {s:"Ohio - Jenn Pharmacist",n:"3441745",e:"2027-09-15",h:"Jenn"},
     {s:"Ohio - Hannah Pharmacist",n:"3440262",e:"2027-09-15",h:"Hannah"},
     {s:"Ohio - Kira Pharmacist",n:"3129894",e:"2027-09-15",h:"Kira"},
     {s:"Ohio - Dante Pharmacist",n:"3444654",e:"2027-09-15",h:"Dante"},
-    {s:"Oklahoma - Narcotics & Dangerous Drug",n:"55969",e:"2026-10-31",h:"Erie",w:"Pharmacy Board License Renewal",u:"contact@pharmacyinnovations.net",p:"Pharmacy@1234",nt:"Michael, Collegiate Academy, Thayer. Separate application than pharmacy!",em:"licensing@pharmacyinnovations.net"},
+    {s:"Oklahoma - Narcotics & Dangerous Drug",n:"55969",e:"2026-10-31",h:"Erie",w:"Pharmacy Board License Renewal",nt:"Michael, Collegiate Academy, Thayer. Separate application than pharmacy!",em:"licensing@pharmacyinnovations.net"},
     {s:"Oklahoma (Parenteral)",n:"99-7752",e:"2026-10-31",h:"Erie",i:"2016-10-13",w:"Pharmacy Board License Renewal",nt:"No online account, paper application and pay online with link"},
     {s:"Oklahoma - Jenn Pharmacist",n:"19482",e:"2027-03-31",h:"Jenn"},
-    {s:"Oregon",n:"RP-0002764",e:"2027-03-31",h:"Erie",i:"2013-04-01",w:"https://orbop.mylicense.com/EGOV/Login.aspx",u:"EriePA",p:"Innov@123",em:"contact@pharmacyinnovations.net"},
-    {s:"Oregon - Control Sub",n:"RP-0002764-CS",e:"2027-03-31",h:"Erie",i:"2013-04-01",w:"https://orbop.mylicense.com/EGOV/Login.aspx",u:"EriePA",p:"Innov@123",em:"contact@pharmacyinnovations.net"},
+    {s:"Oregon",n:"RP-0002764",e:"2027-03-31",h:"Erie",i:"2013-04-01",w:"https://orbop.mylicense.com/EGOV/Login.aspx",em:"contact@pharmacyinnovations.net"},
+    {s:"Oregon - Control Sub",n:"RP-0002764-CS",e:"2027-03-31",h:"Erie",i:"2013-04-01",w:"https://orbop.mylicense.com/EGOV/Login.aspx",em:"contact@pharmacyinnovations.net"},
     {s:"Oregon - Katie Pharmacist",n:"RPH-0018697",e:"2027-06-30",h:"Katie"},
-    {s:"Pennsylvania",n:"PP481320",e:"2027-08-31",h:"Erie",i:"2004-04-05",f:"2 years",w:"BPOA - Pennsylvania Licensing System",u:"PP481320",p:"PharmInnov@1"},
+    {s:"Pennsylvania",n:"PP481320",e:"2027-08-31",h:"Erie",i:"2004-04-05",f:"2 years",w:"BPOA - Pennsylvania Licensing System"},
     {s:"Pennsylvania - Jenn Pharmacist",n:"RP450768",e:"2026-09-30",h:"Jenn"},
     {s:"Pennsylvania - Jenn Injectables",n:"RPI010720",e:"2026-09-30",h:"Jenn"},
     {s:"Pennsylvania - Kira Pharmacist",n:"RP450350",e:"2026-09-30",h:"Kira"},
@@ -897,20 +904,20 @@ const SEED_DATA = {
     {s:"Pennsylvania - Debbie Pharmacist",n:"RP037738L",e:"2026-09-30",h:"Debbie"},
     {s:"Pennsylvania - Sheila Pharmacist",n:"RP036037L",e:"2026-09-30",h:"Sheila"},
     {s:"Pennsylvania - Sheila Injectables",n:"RPI014633",e:"2026-09-30",h:"Sheila"},
-    {s:"Rhode Island",n:"PHN10299",e:"2026-09-30",h:"Erie",i:"2012-06-15",f:"1 year",v:"2025-10-30",w:"https://orbop.mylicense.com/EGOV/Login.aspx",u:"EriePA",p:"innovations"},
-    {s:"Rhode Island - Controlled Substance",n:"CPHN10299",e:"2026-09-30",h:"Erie",f:"1 year",w:"https://orbop.mylicense.com/EGOV/Login.aspx",u:"EriePA",p:"innovations"},
-    {s:"South Carolina",n:"13997",e:"2026-06-30",h:"Erie",i:"2012-05-17",f:"1 year",w:"Online Services Login Portal",u:"2247942",p:"PharmInnov@1"},
+    {s:"Rhode Island",n:"PHN10299",e:"2026-09-30",h:"Erie",i:"2012-06-15",f:"1 year",v:"2025-10-30",w:"https://orbop.mylicense.com/EGOV/Login.aspx"},
+    {s:"Rhode Island - Controlled Substance",n:"CPHN10299",e:"2026-09-30",h:"Erie",f:"1 year",w:"https://orbop.mylicense.com/EGOV/Login.aspx"},
+    {s:"South Carolina",n:"13997",e:"2026-06-30",h:"Erie",i:"2012-05-17",f:"1 year",w:"Online Services Login Portal"},
     {s:"South Carolina - Control Sub",n:"13-13997",e:"2026-04-01",h:"Erie"},
     {s:"South Carolina - Jenn Pharmacist",n:"43400",e:"2027-04-30",h:"Jenn"},
-    {s:"South Dakota",n:"400-1031",e:"2026-06-30",h:"Erie",i:"2012-10-17",f:"1 year",v:"2025-10-30",w:"https://sdbop.igovsolution.net/online/User_login.aspx",u:"PIErie",p:"PharmInnov!1",nt:"Make sure to check business box",em:"contact@pharmacyinnovations.net"},
+    {s:"South Dakota",n:"400-1031",e:"2026-06-30",h:"Erie",i:"2012-10-17",f:"1 year",v:"2025-10-30",w:"https://sdbop.igovsolution.net/online/User_login.aspx",nt:"Make sure to check business box",em:"contact@pharmacyinnovations.net"},
     {s:"Tennessee",n:"00005180",e:"2027-04-30",h:"Erie"},
-    {s:"Tennessee - Katie Pharmacist",n:"45733",e:"2027-11-30",h:"Katie",i:"2021-11-08",w:"Quick Start Menu",u:"licensing@pharmacyinnovations.net",p:"PharmInnov@1"},
-    {s:"Texas",n:"28316",e:"2026-11-30",h:"Erie",i:"2012-11-05",u:"contact@pharmacyinnovations.net",p:"PharmInnov@1",nt:"Under Rich's name, emailed to get both licenses on here"},
+    {s:"Tennessee - Katie Pharmacist",n:"45733",e:"2027-11-30",h:"Katie",i:"2021-11-08",w:"Quick Start Menu"},
+    {s:"Texas",n:"28316",e:"2026-11-30",h:"Erie",i:"2012-11-05",nt:"Under Rich's name, emailed to get both licenses on here"},
     {s:"Texas - Jenn Pharmacist",n:"69841",e:"2028-03-31",h:"Jenn"},
     {s:"Utah - Control Sub",n:"8926437-8913",e:"2027-09-30",h:"Erie"},
     {s:"Utah (Class D)",n:"8926437-1708",e:"2027-09-30",h:"Erie"},
-    {s:"Vermont",n:"036.0088981",e:"2027-07-31",h:"Erie",i:"2012-07-25",f:"2 years",w:"User Details",u:"EriePA",p:"Innov@14"},
-    {s:"Virginia",n:"214001318",e:"2026-04-30",h:"Erie",i:"2011-04-04",w:"Login",u:"pierie",p:"innovations1"},
+    {s:"Vermont",n:"036.0088981",e:"2027-07-31",h:"Erie",i:"2012-07-25",f:"2 years",w:"User Details"},
+    {s:"Virginia",n:"214001318",e:"2026-04-30",h:"Erie",i:"2011-04-04",w:"Login"},
     {s:"Virginia - Jenn Pharmacist",n:"0202220263",e:"2026-12-31",h:"Jenn"},
     {s:"Virginia - Katie Pharmacist",n:"202219979",e:"2026-12-31",h:"Katie"},
     {s:"Washington",n:"PHNR.FO.60289244",e:"2026-05-31",h:"Erie"},
@@ -920,7 +927,7 @@ const SEED_DATA = {
     {s:"Wyoming",n:"NR-50543",e:"2026-06-30",h:"Erie"},
     {s:"Wyoming - Control Sub",n:"1026PI12",e:"2026-06-30",h:"Erie"},
     {s:"NABP",n:"3982926",e:"",h:"Erie",nt:"eProfile ID 752141"},
-    {s:"NCPDP",n:"3982926",e:"",h:"Erie",w:"Welcome To NCPDP",u:"moonrph",p:"PharmInno123!",nt:"Electronic Pin for Acknowledgement - 4117"},
+    {s:"NCPDP",n:"3982926",e:"",h:"Erie",w:"Welcome To NCPDP",nt:"Electronic Pin for Acknowledgement - 4117"},
     {s:"DEA",n:"BP8752152",e:"",h:"Erie"},
     {s:"EIN",n:"161472560",e:"",h:"Erie"},
     {s:"NPI",n:"1629297718",e:"",h:"Erie"},
@@ -939,24 +946,24 @@ const SEED_DATA = {
     {s:"TX - Elizabeth Pharmacist",n:"51817",e:"2027-08-31",h:"Elizabeth",i:"2012-07-30",rs:"NEEDS DONE ASAP"},
     {s:"TX - Laura Technician",n:"369172",e:"2026-03-31",h:"Laura",i:"2024-03-29"},
     {s:"AZ",n:"Y005448",e:"2026-10-31",h:"Houston",i:"2011-11-08",rs:"NEED INFO"},
-    {s:"TMHP - Medicaid",n:"1245386689",e:"2026-04-26",w:"secure.tmhp.com/MyAccount/default.aspx",u:"PharmInnovHST",p:"PharmInnov@1",rs:"NEEDS DONE NEXT 3 MONTHS"},
+    {s:"TMHP - Medicaid",n:"1245386689",e:"2026-04-26",w:"secure.tmhp.com/MyAccount/default.aspx",rs:"NEEDS DONE NEXT 3 MONTHS"},
     {s:"Alarm Permit",n:"301104465",e:"2026-08-31"},
     {s:"DEA License",n:"FR0629898",e:"2028-03-31"},
     {s:"CBD license?",n:"",e:""}
   ],
   "Florida (St. Pete)": [
-    {s:"FL",n:"PH30191",e:"2027-02-28",w:"My Dashboard",u:"contact@pharmacyinnovations.net",p:"Innovations@1",rs:"SUBMITTED-WAITING"},
+    {s:"FL",n:"PH30191",e:"2027-02-28",w:"My Dashboard",rs:"SUBMITTED-WAITING"},
     {s:"Ruben Santana Pharmacist",n:"PS59798",e:"2027-09-30",h:"Ruben",i:"2019-08-22"},
-    {s:"GA",n:"PHNR001030",e:"2025-06-30",nt:"LAPSED",w:"Home",u:"StPeteGA",p:"PharmInnov@1",rs:"LAPSED"},
+    {s:"GA",n:"PHNR001030",e:"2025-06-30",nt:"LAPSED",w:"Home",rs:"LAPSED"},
     {s:"DEA License",n:"FP6217675",e:"2028-08-31"}
   ],
   "Virginia (Virginia Beach)": [
-    {s:"VA",n:"201003136",e:"2026-04-30",w:"Home",u:"pivirginiabeach",p:"innovations1",rs:"SUBMITTED-WAITING"},
+    {s:"VA",n:"201003136",e:"2026-04-30",w:"Home",rs:"SUBMITTED-WAITING"},
     {s:"Jeffrey Scott Smithson Pharmacist",n:"202009780",e:"2026-12-31",h:"Jeffrey",i:"1989-08-09"},
-    {s:"DEA License",n:"FP5581598",e:"2027-08-31",u:"PharmInnovVA",p:"PharmInnov@1"}
+    {s:"DEA License",n:"FP5581598",e:"2027-08-31"}
   ],
   "Greenville, SC": [
-    {s:"SC",n:"10460",e:"2026-06-30",u:"2144911",p:"PharmInnov@1",rs:"SUBMITTED-WAITING"},
+    {s:"SC",n:"10460",e:"2026-06-30",rs:"SUBMITTED-WAITING"},
     {s:"SC Controlled Substance",n:"10-10460",e:"2027-04-01"},
     {s:"DEA License",n:"FP1578078",e:"",rs:"NEEDS DONE ASAP"}
   ],
@@ -996,16 +1003,13 @@ const SEED_DATA = {
 
 // ===== INITIALIZATION =====
 function init() {
-  loadData();
-  if (licenses.length === 0) {
-    importSeedData();
-  }
+  loadLocalData();
   populateLocationFilters();
   initMsal();
   setupNavigation();
 }
 
-function loadData() {
+function loadLocalData() {
   try {
     const d = JSON.parse(localStorage.getItem(DATA_KEY) || '{}');
     licenses = d.licenses || [];
@@ -1014,8 +1018,486 @@ function loadData() {
   } catch(e) { licenses = []; inspections = []; documents = []; }
 }
 
-function saveData() {
-  localStorage.setItem(DATA_KEY, JSON.stringify({ licenses, inspections, documents }));
+function saveLocalCache() {
+  // Save to localStorage as cache (exclude large file data to avoid quota)
+  const cacheLicenses = licenses.map(l => { const c = {...l}; delete c.licenseCopy; return c; });
+  const cacheDocs = documents.map(d => { const c = {...d}; delete c.dataUrl; return c; });
+  localStorage.setItem(DATA_KEY, JSON.stringify({ licenses: cacheLicenses, inspections, documents: cacheDocs }));
+}
+
+// ===== SHAREPOINT GRAPH API LAYER =====
+async function spConnect() {
+  const token = await getToken();
+  if (!token) return false;
+
+  try {
+    // Resolve site ID
+    const siteUrl = new URL(SP_SITE_URL);
+    const sitePath = siteUrl.hostname + ':' + siteUrl.pathname;
+    const siteResp = await fetch(`${GRAPH_BASE}/sites/${sitePath}`, { headers: { Authorization: `Bearer ${token}` } });
+    if (!siteResp.ok) throw new Error('Could not resolve SharePoint site');
+    const siteData = await siteResp.json();
+    spSiteId = siteData.id;
+
+    // Resolve list IDs
+    for (const listName of [SP_LIST_LICENSES, SP_LIST_INSPECTIONS, SP_LIST_DOCUMENTS]) {
+      try {
+        const listResp = await fetch(`${GRAPH_BASE}/sites/${spSiteId}/lists/${encodeURIComponent(listName)}`, { headers: { Authorization: `Bearer ${token}` } });
+        if (listResp.ok) {
+          const listData = await listResp.json();
+          spListIds[listName] = listData.id;
+        }
+      } catch(e) { console.warn('List not found:', listName); }
+    }
+
+    // Resolve document library drive
+    try {
+      const libResp = await fetch(`${GRAPH_BASE}/sites/${spSiteId}/lists/${encodeURIComponent(SP_DOC_LIBRARY)}`, { headers: { Authorization: `Bearer ${token}` } });
+      if (libResp.ok) {
+        const libData = await libResp.json();
+        const driveResp = await fetch(`${GRAPH_BASE}/sites/${spSiteId}/lists/${libData.id}/drive`, { headers: { Authorization: `Bearer ${token}` } });
+        if (driveResp.ok) {
+          const driveData = await driveResp.json();
+          spDriveId = driveData.id;
+        }
+      }
+    } catch(e) { console.warn('Doc library not found'); }
+
+    spConnected = !!(spListIds[SP_LIST_LICENSES]);
+    console.log('SharePoint connected:', spConnected, 'Lists:', Object.keys(spListIds));
+    return spConnected;
+  } catch(e) {
+    console.warn('SharePoint connection failed:', e);
+    return false;
+  }
+}
+
+async function spCreateLists() {
+  const token = await getToken();
+  if (!token || !spSiteId) { showToast('Not connected to SharePoint', 'error'); return false; }
+
+  const listDefs = [
+    { displayName: SP_LIST_LICENSES, columns: [
+      { name: 'Location', text: {} },
+      { name: 'StateName', text: {} },
+      { name: 'LicenseNumber', text: {} },
+      { name: 'LicenseType', text: {} },
+      { name: 'ExpirationDate', text: {} },
+      { name: 'IssueDate', text: {} },
+      { name: 'LicenseHolder', text: {} },
+      { name: 'RenewalFrequency', text: {} },
+      { name: 'LastVerified', text: {} },
+      { name: 'InspectionAccepted', text: {} },
+      { name: 'BoardWebsite', text: {} },
+      { name: 'BoardUsername', text: {} },
+      { name: 'BoardPassword', text: {} },
+      { name: 'BoardEmail', text: {} },
+      { name: 'Notes', text: { allowMultipleLines: true } },
+      { name: 'RenewalInstructions', text: { allowMultipleLines: true } },
+      { name: 'RenewalStatus', text: {} },
+      { name: 'LicenseCopyUrl', text: {} },
+      { name: 'LicenseCopyName', text: {} },
+      { name: 'LicenseCopyDate', text: {} }
+    ]},
+    { displayName: SP_LIST_INSPECTIONS, columns: [
+      { name: 'Location', text: {} },
+      { name: 'InspType', text: {} },
+      { name: 'InspDate', text: {} },
+      { name: 'Result', text: {} },
+      { name: 'Inspector', text: {} },
+      { name: 'RelatedLicense', text: {} },
+      { name: 'Notes', text: { allowMultipleLines: true } },
+      { name: 'FollowupDate', text: {} }
+    ]},
+    { displayName: SP_LIST_DOCUMENTS, columns: [
+      { name: 'Location', text: {} },
+      { name: 'DocType', text: {} },
+      { name: 'RelatedState', text: {} },
+      { name: 'Notes', text: { allowMultipleLines: true } },
+      { name: 'UploadDate', text: {} },
+      { name: 'FileUrl', text: {} },
+      { name: 'FileType', text: {} }
+    ]}
+  ];
+
+  for (const def of listDefs) {
+    if (spListIds[def.displayName]) { console.log('List exists:', def.displayName); continue; }
+    try {
+      // Create list
+      const createResp = await fetch(`${GRAPH_BASE}/sites/${spSiteId}/lists`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ displayName: def.displayName, list: { template: 'genericList' } })
+      });
+      if (!createResp.ok) { const err = await createResp.json(); throw new Error(err.error?.message || 'Create failed'); }
+      const listData = await createResp.json();
+      spListIds[def.displayName] = listData.id;
+
+      // Add columns
+      for (const col of def.columns) {
+        await fetch(`${GRAPH_BASE}/sites/${spSiteId}/lists/${listData.id}/columns`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify(col)
+        });
+      }
+      console.log('Created list:', def.displayName);
+    } catch(e) { console.error('Error creating list:', def.displayName, e); showToast('Error creating ' + def.displayName + ': ' + e.message, 'error'); return false; }
+  }
+
+  // Create document library if missing
+  if (!spDriveId) {
+    try {
+      const libResp = await fetch(`${GRAPH_BASE}/sites/${spSiteId}/lists`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ displayName: SP_DOC_LIBRARY, list: { template: 'documentLibrary' } })
+      });
+      if (libResp.ok) {
+        const libData = await libResp.json();
+        const driveResp = await fetch(`${GRAPH_BASE}/sites/${spSiteId}/lists/${libData.id}/drive`, { headers: { Authorization: `Bearer ${token}` } });
+        if (driveResp.ok) { spDriveId = (await driveResp.json()).id; }
+      }
+    } catch(e) { console.warn('Doc library creation failed:', e); }
+  }
+
+  spConnected = true;
+  showToast('SharePoint lists created successfully', 'success');
+  return true;
+}
+
+// ===== SHAREPOINT CRUD =====
+async function spFetchAll(listName) {
+  const token = await getToken();
+  const listId = spListIds[listName];
+  if (!token || !listId) return [];
+
+  let items = [];
+  let url = `${GRAPH_BASE}/sites/${spSiteId}/lists/${listId}/items?expand=fields&$top=200`;
+  while (url) {
+    const resp = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+    if (!resp.ok) break;
+    const data = await resp.json();
+    items = items.concat(data.value || []);
+    url = data['@odata.nextLink'] || null;
+  }
+  return items;
+}
+
+async function spCreateItem(listName, fields) {
+  const token = await getToken();
+  const listId = spListIds[listName];
+  if (!token || !listId) return null;
+
+  const resp = await fetch(`${GRAPH_BASE}/sites/${spSiteId}/lists/${listId}/items`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ fields: { Title: fields.Title || 'Item', ...fields } })
+  });
+  if (!resp.ok) { console.error('Create item failed:', await resp.text()); return null; }
+  return await resp.json();
+}
+
+async function spUpdateItem(listName, spItemId, fields) {
+  const token = await getToken();
+  const listId = spListIds[listName];
+  if (!token || !listId) return false;
+
+  const resp = await fetch(`${GRAPH_BASE}/sites/${spSiteId}/lists/${listId}/items/${spItemId}/fields`, {
+    method: 'PATCH',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(fields)
+  });
+  return resp.ok;
+}
+
+async function spDeleteItem(listName, spItemId) {
+  const token = await getToken();
+  const listId = spListIds[listName];
+  if (!token || !listId) return false;
+
+  const resp = await fetch(`${GRAPH_BASE}/sites/${spSiteId}/lists/${listId}/items/${spItemId}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  return resp.ok;
+}
+
+async function spUploadFile(folderPath, fileName, blob, contentType) {
+  const token = await getToken();
+  if (!token || !spDriveId) return null;
+
+  const safeName = fileName.replace(/[#%&{}\\<>*?/$!'":@+`|=]/g, '_');
+  const resp = await fetch(`${GRAPH_BASE}/drives/${spDriveId}/root:/${folderPath}/${safeName}:/content`, {
+    method: 'PUT',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': contentType || 'application/octet-stream' },
+    body: blob
+  });
+  if (!resp.ok) return null;
+  const file = await resp.json();
+  return file.webUrl || file['@microsoft.graph.downloadUrl'] || '';
+}
+
+// ===== SHAREPOINT DATA MAPPING =====
+function licenseToSpFields(l) {
+  return {
+    Title: (l.state || '').substring(0, 255),
+    Location: l.location || '',
+    StateName: l.state || '',
+    LicenseNumber: l.licenseNumber || '',
+    LicenseType: l.type || '',
+    ExpirationDate: l.expirationDate || '',
+    IssueDate: l.issueDate || '',
+    LicenseHolder: l.licenseHolder || '',
+    RenewalFrequency: l.renewalFrequency || '',
+    LastVerified: l.lastVerified || '',
+    InspectionAccepted: l.inspectionAccepted || '',
+    BoardWebsite: l.boardWebsite || '',
+    BoardUsername: l.boardUsername || '',
+    BoardPassword: l.boardPassword || '',
+    BoardEmail: l.boardEmail || '',
+    Notes: l.notes || '',
+    RenewalInstructions: l.renewalInstructions || '',
+    RenewalStatus: l.renewalStatus || '',
+    LicenseCopyUrl: l.licenseCopyUrl || '',
+    LicenseCopyName: l.licenseCopyName || '',
+    LicenseCopyDate: l.licenseCopyDate || ''
+  };
+}
+
+function spFieldsToLicense(item) {
+  const f = item.fields;
+  return {
+    id: item.id,
+    spItemId: item.id,
+    location: f.Location || '',
+    state: f.StateName || f.Title || '',
+    licenseNumber: f.LicenseNumber || '',
+    type: f.LicenseType || 'Pharmacy',
+    expirationDate: f.ExpirationDate || '',
+    issueDate: f.IssueDate || '',
+    licenseHolder: f.LicenseHolder || '',
+    renewalFrequency: f.RenewalFrequency || '',
+    lastVerified: f.LastVerified || '',
+    inspectionAccepted: f.InspectionAccepted || '',
+    boardWebsite: f.BoardWebsite || '',
+    boardUsername: f.BoardUsername || '',
+    boardPassword: f.BoardPassword || '',
+    boardEmail: f.BoardEmail || '',
+    notes: f.Notes || '',
+    renewalInstructions: f.RenewalInstructions || '',
+    renewalStatus: f.RenewalStatus || '',
+    licenseCopyUrl: f.LicenseCopyUrl || '',
+    licenseCopyName: f.LicenseCopyName || '',
+    licenseCopyDate: f.LicenseCopyDate || ''
+  };
+}
+
+function inspectionToSpFields(i) {
+  return {
+    Title: (i.type || 'Inspection').substring(0, 255),
+    Location: i.location || '',
+    InspType: i.type || '',
+    InspDate: i.date || '',
+    Result: i.result || '',
+    Inspector: i.inspector || '',
+    RelatedLicense: i.relatedLicense || '',
+    Notes: i.notes || '',
+    FollowupDate: i.followupDate || ''
+  };
+}
+
+function spFieldsToInspection(item) {
+  const f = item.fields;
+  return {
+    id: item.id,
+    spItemId: item.id,
+    location: f.Location || '',
+    type: f.InspType || f.Title || '',
+    date: f.InspDate || '',
+    result: f.Result || '',
+    inspector: f.Inspector || '',
+    relatedLicense: f.RelatedLicense || '',
+    notes: f.Notes || '',
+    followupDate: f.FollowupDate || ''
+  };
+}
+
+function documentToSpFields(d) {
+  return {
+    Title: (d.name || 'Document').substring(0, 255),
+    Location: d.location || '',
+    DocType: d.docType || '',
+    RelatedState: d.relatedState || '',
+    Notes: d.notes || '',
+    UploadDate: d.uploadDate || '',
+    FileUrl: d.fileUrl || '',
+    FileType: d.fileType || ''
+  };
+}
+
+function spFieldsToDocument(item) {
+  const f = item.fields;
+  return {
+    id: item.id,
+    spItemId: item.id,
+    name: f.Title || '',
+    location: f.Location || '',
+    docType: f.DocType || '',
+    relatedState: f.RelatedState || '',
+    notes: f.Notes || '',
+    uploadDate: f.UploadDate || '',
+    fileUrl: f.FileUrl || '',
+    fileType: f.FileType || ''
+  };
+}
+
+// ===== LOAD FROM SHAREPOINT =====
+async function loadFromSharePoint() {
+  if (!spConnected) return false;
+  try {
+    showToast('Loading data from SharePoint...', 'info');
+
+    const [licItems, inspItems, docItems] = await Promise.all([
+      spFetchAll(SP_LIST_LICENSES),
+      spListIds[SP_LIST_INSPECTIONS] ? spFetchAll(SP_LIST_INSPECTIONS) : [],
+      spListIds[SP_LIST_DOCUMENTS] ? spFetchAll(SP_LIST_DOCUMENTS) : []
+    ]);
+
+    if (licItems.length > 0) {
+      licenses = licItems.map(spFieldsToLicense);
+      inspections = inspItems.map(spFieldsToInspection);
+      documents = docItems.map(spFieldsToDocument);
+      saveLocalCache();
+      renderAll();
+      showToast(`Loaded ${licenses.length} licenses from SharePoint`, 'success');
+      return true;
+    }
+    return false;
+  } catch(e) {
+    console.error('SharePoint load error:', e);
+    return false;
+  }
+}
+
+// ===== SAVE SINGLE ITEM TO SHAREPOINT =====
+async function spSaveLicense(license) {
+  if (!spConnected) { saveLocalCache(); return; }
+  const fields = licenseToSpFields(license);
+  if (license.spItemId) {
+    await spUpdateItem(SP_LIST_LICENSES, license.spItemId, fields);
+  } else {
+    const result = await spCreateItem(SP_LIST_LICENSES, fields);
+    if (result) {
+      license.spItemId = result.id;
+      license.id = result.id;
+    }
+  }
+  saveLocalCache();
+}
+
+async function spSaveInspection(inspection) {
+  if (!spConnected || !spListIds[SP_LIST_INSPECTIONS]) { saveLocalCache(); return; }
+  const fields = inspectionToSpFields(inspection);
+  if (inspection.spItemId) {
+    await spUpdateItem(SP_LIST_INSPECTIONS, inspection.spItemId, fields);
+  } else {
+    const result = await spCreateItem(SP_LIST_INSPECTIONS, fields);
+    if (result) {
+      inspection.spItemId = result.id;
+      inspection.id = result.id;
+    }
+  }
+  saveLocalCache();
+}
+
+async function spSaveDocument(doc) {
+  if (!spConnected || !spListIds[SP_LIST_DOCUMENTS]) { saveLocalCache(); return; }
+  const fields = documentToSpFields(doc);
+  if (doc.spItemId) {
+    await spUpdateItem(SP_LIST_DOCUMENTS, doc.spItemId, fields);
+  } else {
+    const result = await spCreateItem(SP_LIST_DOCUMENTS, fields);
+    if (result) {
+      doc.spItemId = result.id;
+      doc.id = result.id;
+    }
+  }
+  saveLocalCache();
+}
+
+// ===== MIGRATE LOCAL DATA TO SHAREPOINT =====
+async function migrateToSharePoint() {
+  if (!spConnected) {
+    showToast('Connecting to SharePoint...', 'info');
+    const created = await spCreateLists();
+    if (!created) return;
+    await spConnect();
+  }
+
+  if (!spListIds[SP_LIST_LICENSES]) {
+    showToast('SharePoint lists not found. Creating...', 'info');
+    await spCreateLists();
+  }
+
+  // Check if SP already has data
+  const existing = await spFetchAll(SP_LIST_LICENSES);
+  if (existing.length > 0) {
+    if (!confirm(`SharePoint already has ${existing.length} licenses. This will add ${licenses.length} more. Continue?`)) return;
+  }
+
+  showToast(`Migrating ${licenses.length} licenses to SharePoint...`, 'info');
+  let count = 0;
+  for (const lic of licenses) {
+    if (lic.spItemId) continue; // Already in SP
+    const fields = licenseToSpFields(lic);
+
+    // Upload license copy file if exists
+    if (lic.licenseCopy && spDriveId) {
+      try {
+        const base64 = lic.licenseCopy.split(',')[1];
+        const binary = atob(base64);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+        const blob = new Blob([bytes]);
+        const url = await spUploadFile('LicenseCopies/' + lic.location.replace(/[^a-zA-Z0-9]/g,'_'), lic.licenseCopyName || 'license.pdf', blob);
+        if (url) { fields.LicenseCopyUrl = url; lic.licenseCopyUrl = url; }
+      } catch(e) { console.warn('File upload failed for', lic.state); }
+    }
+
+    const result = await spCreateItem(SP_LIST_LICENSES, fields);
+    if (result) { lic.spItemId = result.id; lic.id = result.id; count++; }
+  }
+
+  // Migrate inspections
+  for (const insp of inspections) {
+    if (insp.spItemId) continue;
+    const result = await spCreateItem(SP_LIST_INSPECTIONS, inspectionToSpFields(insp));
+    if (result) { insp.spItemId = result.id; insp.id = result.id; }
+  }
+
+  // Migrate documents
+  for (const doc of documents) {
+    if (doc.spItemId) continue;
+    // Upload file if exists
+    if (doc.dataUrl && spDriveId) {
+      try {
+        const base64 = doc.dataUrl.split(',')[1];
+        const binary = atob(base64);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+        const blob = new Blob([bytes]);
+        const url = await spUploadFile('Documents/' + (doc.location || 'General').replace(/[^a-zA-Z0-9]/g,'_'), doc.name, blob);
+        if (url) { doc.fileUrl = url; }
+      } catch(e) { console.warn('Doc upload failed:', doc.name); }
+    }
+    const result = await spCreateItem(SP_LIST_DOCUMENTS, documentToSpFields(doc));
+    if (result) { doc.spItemId = result.id; doc.id = result.id; }
+  }
+
+  saveLocalCache();
+  renderAll();
+  showToast(`Migration complete! ${count} licenses migrated to SharePoint.`, 'success');
 }
 
 function importSeedData() {
@@ -1038,12 +1520,13 @@ function importSeedData() {
         boardEmail: item.em || '',
         notes: item.nt || '',
         renewalStatus: item.rs || '',
+        renewalInstructions: '',
         type: detectLicenseType(item.s),
         inspectionAccepted: ''
       });
     }
   }
-  saveData();
+  saveLocalCache();
 }
 
 function detectLicenseType(stateName) {
@@ -1134,7 +1617,7 @@ async function getToken() {
   }
 }
 
-function onSignedIn(account) {
+async function onSignedIn(account) {
   signedInUser = { name: account.name, email: account.username || account.email || '' };
   const email = signedInUser.email.toLowerCase();
   isAdmin = ADMIN_PREFIXES.some(p => email.startsWith(p + '@'));
@@ -1145,7 +1628,26 @@ function onSignedIn(account) {
   document.getElementById('signOutBtn').style.display = 'inline-flex';
   document.getElementById('userInfo').textContent = signedInUser.name;
 
+  // Render with local data first (fast)
   renderAll();
+
+  // Then connect to SharePoint and load fresh data
+  const connected = await spConnect();
+  if (connected) {
+    const loaded = await loadFromSharePoint();
+    if (!loaded && licenses.length > 0) {
+      // SP lists exist but empty, local has data — prompt migration
+      if (isAdmin) {
+        showToast('SharePoint lists are empty. Use Settings to migrate data.', 'info');
+      }
+    }
+  } else if (licenses.length === 0) {
+    // No SP connection and no local data — import seed data
+    importSeedData();
+    renderAll();
+  }
+
+  updateSpStatus();
 }
 
 // ===== NAVIGATION =====
@@ -1466,20 +1968,22 @@ function openLicenseDetail(id) {
   }
 
   // License Copy
-  if (l.licenseCopy) {
+  const hasFile = l.licenseCopy || l.licenseCopyUrl;
+  if (hasFile) {
     const ext = (l.licenseCopyName || '').split('.').pop().toLowerCase();
     const isImage = ['png','jpg','jpeg'].includes(ext);
+    const fileSource = l.licenseCopyUrl || l.licenseCopy;
     html += '<div class="detail-section"><h3>Current License Copy</h3>';
-    if (isImage) {
+    if (isImage && l.licenseCopy) {
       html += `<div style="margin-bottom:8px"><img src="${l.licenseCopy}" style="max-width:100%;max-height:400px;border-radius:var(--radius);border:1px solid var(--gray-200);cursor:pointer" onclick="window.open(this.src,'_blank')"></div>`;
     } else {
       html += `<div style="display:flex;align-items:center;gap:12px;padding:12px;background:var(--gray-50);border-radius:var(--radius);border:1px solid var(--gray-200)">
         <span style="font-size:32px">📄</span>
         <div>
-          <strong>${escHtml(l.licenseCopyName)}</strong>
-          <div style="font-size:12px;color:var(--gray-400)">Uploaded ${formatDate(l.licenseCopyDate)}</div>
+          <strong>${escHtml(l.licenseCopyName || 'License copy')}</strong>
+          <div style="font-size:12px;color:var(--gray-400)">Uploaded ${formatDate(l.licenseCopyDate)}${l.licenseCopyUrl ? ' (SharePoint)' : ' (Local)'}</div>
         </div>
-        <a href="${l.licenseCopy}" download="${escHtml(l.licenseCopyName)}" class="btn btn-sm btn-secondary" style="margin-left:auto">Download</a>
+        <a href="${fileSource}" ${l.licenseCopy ? 'download="'+escHtml(l.licenseCopyName)+'"' : 'target="_blank"'} class="btn btn-sm btn-secondary" style="margin-left:auto">${l.licenseCopyUrl ? 'Open' : 'Download'}</a>
       </div>`;
     }
     html += '</div>';
@@ -1561,7 +2065,7 @@ function openEditLicense(id) {
   openModal('licenseFormModal');
 }
 
-function saveLicense(e) {
+async function saveLicense(e) {
   e.preventDefault();
   const editId = document.getElementById('lic_editId').value;
   const data = {
@@ -1587,15 +2091,16 @@ function saveLicense(e) {
   const fileInput = document.getElementById('lic_file');
   const file = fileInput.files[0];
 
-  function finishSave(data, editId) {
+  async function finishSave(data, editId) {
     if (editId) {
-      const idx = licenses.findIndex(l => l.id === parseInt(editId));
-      if (idx >= 0) { licenses[idx] = { ...licenses[idx], ...data }; }
+      const idx = licenses.findIndex(l => String(l.id) === String(editId));
+      if (idx >= 0) { licenses[idx] = { ...licenses[idx], ...data }; await spSaveLicense(licenses[idx]); }
     } else {
-      data.id = licenses.length ? Math.max(...licenses.map(l => l.id)) + 1 : 1;
+      data.id = licenses.length ? Math.max(...licenses.map(l => typeof l.id === 'number' ? l.id : 0)) + 1 : 1;
       licenses.push(data);
+      await spSaveLicense(data);
     }
-    saveData();
+    saveLocalCache();
     closeModal('licenseFormModal');
     renderAll();
     showToast(editId ? 'License updated' : 'License added', 'success');
@@ -1606,20 +2111,38 @@ function saveLicense(e) {
       showToast('File too large (10MB max)', 'error');
       return;
     }
-    const reader = new FileReader();
-    reader.onload = () => {
-      data.licenseCopy = reader.result;
-      data.licenseCopyName = file.name;
-      data.licenseCopyDate = new Date().toISOString().split('T')[0];
-      finishSave(data, editId);
-    };
-    reader.readAsDataURL(file);
+    data.licenseCopyName = file.name;
+    data.licenseCopyDate = new Date().toISOString().split('T')[0];
+
+    // Upload to SharePoint if connected, otherwise store as base64
+    if (spConnected && spDriveId) {
+      const folder = 'LicenseCopies/' + (data.location || 'General').replace(/[^a-zA-Z0-9]/g, '_');
+      const url = await spUploadFile(folder, file.name, file, file.type);
+      if (url) {
+        data.licenseCopyUrl = url;
+        showToast('File uploaded to SharePoint', 'success');
+      } else {
+        showToast('File upload failed, saving locally', 'error');
+        // Fallback to base64
+        const reader = new FileReader();
+        reader.onload = () => { data.licenseCopy = reader.result; finishSave(data, editId); };
+        reader.readAsDataURL(file);
+        return;
+      }
+    } else {
+      const reader = new FileReader();
+      reader.onload = () => { data.licenseCopy = reader.result; finishSave(data, editId); };
+      reader.readAsDataURL(file);
+      return;
+    }
+    finishSave(data, editId);
   } else {
     // Preserve existing file if editing and no new file selected
     if (editId) {
-      const existing = licenses.find(l => l.id === parseInt(editId));
-      if (existing && existing.licenseCopy) {
+      const existing = licenses.find(l => String(l.id) === String(editId));
+      if (existing) {
         data.licenseCopy = existing.licenseCopy;
+        data.licenseCopyUrl = existing.licenseCopyUrl;
         data.licenseCopyName = existing.licenseCopyName;
         data.licenseCopyDate = existing.licenseCopyDate;
       }
@@ -1680,10 +2203,10 @@ function openAddInspection() {
   openModal('inspectionFormModal');
 }
 
-function saveInspection(e) {
+async function saveInspection(e) {
   e.preventDefault();
-  inspections.push({
-    id: inspections.length ? Math.max(...inspections.map(i => i.id)) + 1 : 1,
+  const insp = {
+    id: inspections.length ? Math.max(...inspections.map(i => typeof i.id === 'number' ? i.id : 0)) + 1 : 1,
     location: document.getElementById('insp_location').value,
     type: document.getElementById('insp_type').value,
     date: document.getElementById('insp_date').value,
@@ -1692,8 +2215,9 @@ function saveInspection(e) {
     relatedLicense: document.getElementById('insp_license').value,
     notes: document.getElementById('insp_notes').value,
     followupDate: document.getElementById('insp_followup').value
-  });
-  saveData();
+  };
+  inspections.push(insp);
+  await spSaveInspection(insp);
   closeModal('inspectionFormModal');
   renderInspections();
   showToast('Inspection added', 'success');
@@ -1734,7 +2258,7 @@ function openUploadDoc() {
   openModal('uploadDocModal');
 }
 
-function saveDocument(e) {
+async function saveDocument(e) {
   e.preventDefault();
   const fileInput = document.getElementById('doc_file');
   const file = fileInput.files[0];
@@ -1752,19 +2276,33 @@ function saveDocument(e) {
   };
 
   if (file) {
-    const reader = new FileReader();
-    reader.onload = () => {
-      doc.dataUrl = reader.result;
-      documents.push(doc);
-      saveData();
-      closeModal('uploadDocModal');
-      renderDocuments();
-      showToast('Document uploaded', 'success');
-    };
-    reader.readAsDataURL(file);
+    // Upload to SharePoint if connected
+    if (spConnected && spDriveId) {
+      const folder = 'Documents/' + (doc.location || 'General').replace(/[^a-zA-Z0-9]/g, '_');
+      const url = await spUploadFile(folder, file.name, file, file.type);
+      if (url) { doc.fileUrl = url; }
+    } else {
+      // Fallback to base64
+      const reader = new FileReader();
+      reader.onload = async () => {
+        doc.dataUrl = reader.result;
+        documents.push(doc);
+        await spSaveDocument(doc);
+        closeModal('uploadDocModal');
+        renderDocuments();
+        showToast('Document uploaded', 'success');
+      };
+      reader.readAsDataURL(file);
+      return;
+    }
+    documents.push(doc);
+    await spSaveDocument(doc);
+    closeModal('uploadDocModal');
+    renderDocuments();
+    showToast('Document uploaded to SharePoint', 'success');
   } else {
     documents.push(doc);
-    saveData();
+    await spSaveDocument(doc);
     closeModal('uploadDocModal');
     renderDocuments();
   }
@@ -1899,6 +2437,28 @@ function togglePw(id, pw) {
   else el.textContent = '••••••••';
 }
 
+function updateSpStatus() {
+  const el = document.getElementById('spStatus');
+  const migrateBtn = document.getElementById('migrateBtn');
+  el.style.display = 'inline-block';
+  if (spConnected) {
+    el.style.background = 'rgba(22,163,74,.2)';
+    el.style.color = '#dcfce7';
+    el.textContent = 'SharePoint Connected';
+    // Show migrate button if admin and local data has no spItemIds
+    if (isAdmin && licenses.some(l => !l.spItemId)) {
+      migrateBtn.style.display = 'inline-flex';
+    } else {
+      migrateBtn.style.display = 'none';
+    }
+  } else {
+    el.style.background = 'rgba(234,179,8,.2)';
+    el.style.color = '#fef3c7';
+    el.textContent = 'Local Only';
+    migrateBtn.style.display = isAdmin ? 'inline-flex' : 'none';
+  }
+}
+
 function openModal(id) { document.getElementById(id).classList.add('open'); }
 function closeModal(id) { document.getElementById(id).classList.remove('open'); }
 
@@ -1932,7 +2492,9 @@ function devBypass() {
   document.getElementById('loginGate').style.display = 'none';
   document.getElementById('mainContent').style.display = 'block';
   document.getElementById('userInfo').textContent = 'Dev Mode';
+  if (licenses.length === 0) importSeedData();
   renderAll();
+  updateSpStatus();
 }
 
 // Check if MSAL is unavailable (local dev), auto-bypass
