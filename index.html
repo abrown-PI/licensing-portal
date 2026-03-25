@@ -597,8 +597,18 @@
             <input type="text" id="lic_password" placeholder="Login password">
           </div>
           <div class="form-group full-width">
+            <label>Renewal Instructions</label>
+            <textarea id="lic_renewalInstructions" placeholder="Step-by-step instructions for renewing this license..." style="min-height:120px"></textarea>
+          </div>
+          <div class="form-group full-width">
             <label>Notes</label>
             <textarea id="lic_notes" placeholder="Any additional notes..."></textarea>
+          </div>
+          <div class="form-group full-width">
+            <label>Current License Copy</label>
+            <div id="lic_currentFilePreview" style="margin-bottom:8px"></div>
+            <input type="file" id="lic_file" accept=".pdf,.png,.jpg,.jpeg,.doc,.docx">
+            <small style="color:var(--gray-400)">Upload a scan/copy of the current license (PDF, image, or document)</small>
           </div>
         </div>
         <input type="hidden" id="lic_editId">
@@ -1455,6 +1465,31 @@ function openLicenseDetail(id) {
     html += '</div></div>';
   }
 
+  // License Copy
+  if (l.licenseCopy) {
+    const ext = (l.licenseCopyName || '').split('.').pop().toLowerCase();
+    const isImage = ['png','jpg','jpeg'].includes(ext);
+    html += '<div class="detail-section"><h3>Current License Copy</h3>';
+    if (isImage) {
+      html += `<div style="margin-bottom:8px"><img src="${l.licenseCopy}" style="max-width:100%;max-height:400px;border-radius:var(--radius);border:1px solid var(--gray-200);cursor:pointer" onclick="window.open(this.src,'_blank')"></div>`;
+    } else {
+      html += `<div style="display:flex;align-items:center;gap:12px;padding:12px;background:var(--gray-50);border-radius:var(--radius);border:1px solid var(--gray-200)">
+        <span style="font-size:32px">📄</span>
+        <div>
+          <strong>${escHtml(l.licenseCopyName)}</strong>
+          <div style="font-size:12px;color:var(--gray-400)">Uploaded ${formatDate(l.licenseCopyDate)}</div>
+        </div>
+        <a href="${l.licenseCopy}" download="${escHtml(l.licenseCopyName)}" class="btn btn-sm btn-secondary" style="margin-left:auto">Download</a>
+      </div>`;
+    }
+    html += '</div>';
+  }
+
+  // Renewal Instructions
+  if (l.renewalInstructions) {
+    html += `<div class="detail-section"><h3>Renewal Instructions</h3><div style="font-size:14px;color:var(--gray-700);white-space:pre-wrap;background:var(--gray-50);padding:16px;border-radius:var(--radius);border:1px solid var(--gray-200);line-height:1.7">${escHtml(l.renewalInstructions)}</div></div>`;
+  }
+
   if (l.notes) {
     html += `<div class="detail-section"><h3>Notes</h3><p style="font-size:14px;color:var(--gray-700)">${escHtml(l.notes)}</p></div>`;
   }
@@ -1483,6 +1518,7 @@ function openAddLicense() {
   document.getElementById('licFormTitle').textContent = 'Add License';
   document.getElementById('licenseForm').reset();
   document.getElementById('lic_editId').value = '';
+  document.getElementById('lic_currentFilePreview').innerHTML = '';
   populateLicLocationSelect();
   openModal('licenseFormModal');
 }
@@ -1508,6 +1544,20 @@ function openEditLicense(id) {
   document.getElementById('lic_username').value = l.boardUsername;
   document.getElementById('lic_password').value = l.boardPassword;
   document.getElementById('lic_notes').value = l.notes;
+  document.getElementById('lic_renewalInstructions').value = l.renewalInstructions || '';
+  // Show existing file preview if there's a license copy
+  const preview = document.getElementById('lic_currentFilePreview');
+  if (l.licenseCopy) {
+    const ext = (l.licenseCopyName || '').split('.').pop().toLowerCase();
+    const isImage = ['png','jpg','jpeg'].includes(ext);
+    preview.innerHTML = '<div style="display:flex;align-items:center;gap:8px;padding:8px;background:var(--gray-50);border-radius:var(--radius);border:1px solid var(--gray-200)">'
+      + (isImage ? '<img src="'+l.licenseCopy+'" style="height:60px;border-radius:4px">' : '<span style="font-size:24px">📄</span>')
+      + '<div><strong style="font-size:13px">'+escHtml(l.licenseCopyName || 'License copy')+'</strong>'
+      + '<div style="font-size:11px;color:var(--gray-400)">Uploaded — upload new file to replace</div></div></div>';
+  } else {
+    preview.innerHTML = '';
+  }
+  document.getElementById('lic_file').value = '';
   openModal('licenseFormModal');
 }
 
@@ -1530,20 +1580,52 @@ function saveLicense(e) {
     boardUsername: document.getElementById('lic_username').value,
     boardPassword: document.getElementById('lic_password').value,
     notes: document.getElementById('lic_notes').value,
+    renewalInstructions: document.getElementById('lic_renewalInstructions').value,
     inspectionAccepted: ''
   };
 
-  if (editId) {
-    const idx = licenses.findIndex(l => l.id === parseInt(editId));
-    if (idx >= 0) { licenses[idx] = { ...licenses[idx], ...data }; }
-  } else {
-    data.id = licenses.length ? Math.max(...licenses.map(l => l.id)) + 1 : 1;
-    licenses.push(data);
+  const fileInput = document.getElementById('lic_file');
+  const file = fileInput.files[0];
+
+  function finishSave(data, editId) {
+    if (editId) {
+      const idx = licenses.findIndex(l => l.id === parseInt(editId));
+      if (idx >= 0) { licenses[idx] = { ...licenses[idx], ...data }; }
+    } else {
+      data.id = licenses.length ? Math.max(...licenses.map(l => l.id)) + 1 : 1;
+      licenses.push(data);
+    }
+    saveData();
+    closeModal('licenseFormModal');
+    renderAll();
+    showToast(editId ? 'License updated' : 'License added', 'success');
   }
-  saveData();
-  closeModal('licenseFormModal');
-  renderAll();
-  showToast(editId ? 'License updated' : 'License added', 'success');
+
+  if (file) {
+    if (file.size > 10 * 1024 * 1024) {
+      showToast('File too large (10MB max)', 'error');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      data.licenseCopy = reader.result;
+      data.licenseCopyName = file.name;
+      data.licenseCopyDate = new Date().toISOString().split('T')[0];
+      finishSave(data, editId);
+    };
+    reader.readAsDataURL(file);
+  } else {
+    // Preserve existing file if editing and no new file selected
+    if (editId) {
+      const existing = licenses.find(l => l.id === parseInt(editId));
+      if (existing && existing.licenseCopy) {
+        data.licenseCopy = existing.licenseCopy;
+        data.licenseCopyName = existing.licenseCopyName;
+        data.licenseCopyDate = existing.licenseCopyDate;
+      }
+    }
+    finishSave(data, editId);
+  }
 }
 
 // ===== PERSONNEL =====
