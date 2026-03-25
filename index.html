@@ -2001,11 +2001,11 @@ function openLocationDetail(loc) {
   }
 
   // Key licenses with links
-  html += '<div class="card" style="margin-bottom:16px"><div class="card-header"><h2>Key Licenses &amp; Current Copies</h2></div><div class="card-body">';
+  html += '<div class="card" style="margin-bottom:16px"><div class="card-header"><h2>Key Licenses</h2></div><div class="card-body">';
   const keyTypes = ['Pharmacy','DEA','Controlled Substance','Sterile Compounding'];
   const keyLics = locLics.filter(l => keyTypes.includes(l.type) || l.state.match(/^(DEA|NPI|NABP)/));
   if (keyLics.length) {
-    html += '<table class="data-table"><thead><tr><th>License</th><th>Number</th><th>Expiration</th><th>Status</th><th>Copy</th></tr></thead><tbody>';
+    html += '<table class="data-table"><thead><tr><th>License</th><th>Number</th><th>Expiration</th><th>Status</th><th>License Document</th></tr></thead><tbody>';
     keyLics.sort((a,b) => new Date(a.expirationDate || '2099-12-31') - new Date(b.expirationDate || '2099-12-31')).forEach(l => {
       const days = daysUntilExp(l.expirationDate);
       const hasFile = l.licenseCopyUrl || l.licenseCopy;
@@ -2014,10 +2014,16 @@ function openLocationDetail(loc) {
         <td><code>${l.licenseNumber}</code></td>
         <td>${formatDate(l.expirationDate) || 'N/A'} ${urgencyBadge(days, l.expirationDate)}</td>
         <td>${statusBadge(l.renewalStatus) || '<span class="status-badge status-current">Current</span>'}</td>
-        <td>${hasFile
-          ? '<a href="'+(l.licenseCopyUrl || l.licenseCopy)+'" '+(l.licenseCopyUrl ? 'target="_blank"' : 'download="'+escHtml(l.licenseCopyName)+'"')+' class="btn btn-sm btn-secondary" style="font-size:11px">View Copy</a>'
-          : '<span style="font-size:12px;color:var(--gray-400)">No copy uploaded</span>'
-        }</td>
+        <td>
+          ${hasFile
+            ? '<a href="'+(l.licenseCopyUrl || l.licenseCopy)+'" '+(l.licenseCopyUrl ? 'target="_blank"' : 'download="'+escHtml(l.licenseCopyName)+'"')+' class="btn btn-sm btn-success" style="font-size:11px">View Document</a> '
+            : ''
+          }
+          <label class="btn btn-sm btn-${hasFile ? 'secondary' : 'primary'}" style="font-size:11px;cursor:pointer;margin:0">
+            ${hasFile ? 'Replace' : 'Upload'}
+            <input type="file" accept=".pdf,.png,.jpg,.jpeg,.doc,.docx" style="display:none" onchange="quickUploadLicenseCopy('${l.id}', this)">
+          </label>
+        </td>
       </tr>`;
     });
     html += '</tbody></table>';
@@ -2056,17 +2062,27 @@ function openLocationDetail(loc) {
   html += '</div>';
 
   // Licenses sub-tab
-  html += '<div id="locLicenses" style="display:none"><table class="data-table"><thead><tr><th>State/Name</th><th>License #</th><th>Type</th><th>Expiration</th><th>Urgency</th><th>Status</th><th>Copy</th></tr></thead><tbody>';
+  html += '<div id="locLicenses" style="display:none"><table class="data-table"><thead><tr><th>State/Name</th><th>License #</th><th>Type</th><th>Expiration</th><th>Urgency</th><th>Status</th><th>License Document</th></tr></thead><tbody>';
   locLics.sort((a,b) => new Date(a.expirationDate || '2099-12-31') - new Date(b.expirationDate || '2099-12-31')).forEach(l => {
     const days = daysUntilExp(l.expirationDate);
     const hasFile = l.licenseCopyUrl || l.licenseCopy;
-    html += `<tr onclick="closeModal('locationDetailModal');openLicenseDetail('${l.id}')">
-      <td>${l.state}</td><td>${l.licenseNumber}</td>
+    html += `<tr>
+      <td style="cursor:pointer" onclick="closeModal('locationDetailModal');openLicenseDetail('${l.id}')">${l.state}</td>
+      <td>${l.licenseNumber}</td>
       <td><span class="badge badge-${l.type.toLowerCase().replace(/\s+/g,'-')}">${l.type}</span></td>
       <td>${formatDate(l.expirationDate) || 'N/A'}</td>
       <td>${urgencyBadge(days, l.expirationDate)}</td>
       <td>${statusBadge(l.renewalStatus)}</td>
-      <td>${hasFile ? '<span style="color:var(--success);font-size:12px">Uploaded</span>' : ''}</td>
+      <td>
+        ${hasFile
+          ? '<a href="'+(l.licenseCopyUrl || l.licenseCopy)+'" '+(l.licenseCopyUrl ? 'target="_blank"' : 'download="'+escHtml(l.licenseCopyName || 'license')+'"')+' class="btn btn-sm btn-success" style="font-size:11px" onclick="event.stopPropagation()">View</a> '
+          : ''
+        }
+        <label class="btn btn-sm btn-${hasFile ? 'secondary' : 'primary'}" style="font-size:11px;cursor:pointer;margin:0" onclick="event.stopPropagation()">
+          ${hasFile ? 'Replace' : 'Upload'}
+          <input type="file" accept=".pdf,.png,.jpg,.jpeg,.doc,.docx" style="display:none" onchange="quickUploadLicenseCopy('${l.id}', this)">
+        </label>
+      </td>
     </tr>`;
   });
   html += '</tbody></table></div>';
@@ -2662,6 +2678,49 @@ function togglePw(id, pw) {
   const el = document.getElementById('pw_' + id);
   if (el.textContent === '••••••••') el.textContent = pw;
   else el.textContent = '••••••••';
+}
+
+async function quickUploadLicenseCopy(licId, input) {
+  const file = input.files[0];
+  if (!file) return;
+  if (file.size > 10 * 1024 * 1024) { showToast('File too large (10MB max)', 'error'); return; }
+
+  const lic = licenses.find(l => String(l.id) === String(licId));
+  if (!lic) { showToast('License not found', 'error'); return; }
+
+  showToast('Uploading ' + file.name + '...', 'info');
+  lic.licenseCopyName = file.name;
+  lic.licenseCopyDate = new Date().toISOString().split('T')[0];
+
+  if (spConnected && spDriveId) {
+    const folder = 'LicenseCopies/' + (lic.location || 'General').replace(/[^a-zA-Z0-9]/g, '_');
+    const url = await spUploadFile(folder, file.name, file, file.type);
+    if (url) {
+      lic.licenseCopyUrl = url;
+      delete lic.licenseCopy;
+      await spSaveLicense(lic);
+      showToast('Uploaded to SharePoint', 'success');
+    } else {
+      showToast('SharePoint upload failed, saving locally', 'error');
+      const reader = new FileReader();
+      reader.onload = () => { lic.licenseCopy = reader.result; saveLocalCache(); };
+      reader.readAsDataURL(file);
+    }
+  } else {
+    const reader = new FileReader();
+    reader.onload = () => {
+      lic.licenseCopy = reader.result;
+      saveLocalCache();
+      showToast('Saved locally', 'success');
+    };
+    reader.readAsDataURL(file);
+  }
+
+  // Re-open the location detail to refresh the view
+  saveLocalCache();
+  const currentLoc = lic.location;
+  closeModal('locationDetailModal');
+  setTimeout(() => openLocationDetail(currentLoc), 300);
 }
 
 function updateSpStatus() {
