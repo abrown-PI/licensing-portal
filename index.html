@@ -3061,16 +3061,11 @@ async function deleteCurrentUser() {
 function updateSpStatus() {
   const el = document.getElementById('spStatus');
   const migrateBtn = document.getElementById('migrateBtn');
-  if (spConnected) {
-    el.style.display = 'none'; // No need to show when connected
-    // Only show migrate button if admin and there's unmigrated local data
-    if (isAdmin && licenses.length > 0 && licenses.some(l => !l.spItemId)) {
-      migrateBtn.style.display = 'inline-flex';
-    } else {
-      migrateBtn.style.display = 'none';
-    }
+  el.style.display = 'none';
+  if (spConnected && isAdmin && licenses.length > 0 && licenses.some(l => !l.spItemId)) {
+    migrateBtn.style.display = 'inline-flex';
+    migrateBtn.textContent = 'Migrate ' + licenses.filter(l => !l.spItemId).length + ' licenses to SP';
   } else {
-    el.style.display = 'none'; // Hide "Local Only" — not useful to show
     migrateBtn.style.display = 'none';
   }
 }
