@@ -258,12 +258,9 @@
 
 <!-- Navbar -->
 <nav class="navbar">
-  <a class="navbar-brand" href="#">
+  <a class="navbar-brand" href="#" style="margin-right:20px">
     <img src="logo.png" alt="PI" onerror="this.style.display='none'">
-    <div>
-      <span class="brand-text">Licensing Portal</span>
-      <span class="brand-sub">PHARMACY INNOVATIONS</span>
-    </div>
+    <span class="brand-text" style="font-size:17px">Licensing Portal</span>
   </a>
   <div class="nav-tabs" id="navTabs">
     <button class="nav-tab active" data-page="dashboard">Dashboard</button>
@@ -3064,22 +3061,17 @@ async function deleteCurrentUser() {
 function updateSpStatus() {
   const el = document.getElementById('spStatus');
   const migrateBtn = document.getElementById('migrateBtn');
-  el.style.display = 'inline-block';
   if (spConnected) {
-    el.style.background = 'rgba(22,163,74,.2)';
-    el.style.color = '#dcfce7';
-    el.textContent = 'SharePoint Connected';
-    // Show migrate button if admin and local data has no spItemIds
-    if (isAdmin && licenses.some(l => !l.spItemId)) {
+    el.style.display = 'none'; // No need to show when connected
+    // Only show migrate button if admin and there's unmigrated local data
+    if (isAdmin && licenses.length > 0 && licenses.some(l => !l.spItemId)) {
       migrateBtn.style.display = 'inline-flex';
     } else {
       migrateBtn.style.display = 'none';
     }
   } else {
-    el.style.background = 'rgba(234,179,8,.2)';
-    el.style.color = '#fef3c7';
-    el.textContent = 'Local Only';
-    migrateBtn.style.display = isAdmin ? 'inline-flex' : 'none';
+    el.style.display = 'none'; // Hide "Local Only" — not useful to show
+    migrateBtn.style.display = 'none';
   }
 }
 
