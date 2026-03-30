@@ -272,9 +272,11 @@
     <button class="nav-tab" data-page="personnel">Personnel</button>
     <button class="nav-tab" data-page="inspections">Inspections</button>
     <button class="nav-tab" data-page="documents">Documents</button>
+    <button class="nav-tab admin-only-tab" data-page="users" style="display:none">User Management</button>
   </div>
   <div class="nav-actions">
     <span class="user-info" id="userInfo"></span>
+    <span id="userRoleBadge" style="font-size:11px;padding:3px 8px;border-radius:12px;background:rgba(255,255,255,.15);color:rgba(255,255,255,.8);display:none"></span>
     <span id="spStatus" style="font-size:11px;padding:3px 8px;border-radius:12px;display:none"></span>
     <button class="btn btn-sm btn-accent" id="migrateBtn" onclick="migrateToSharePoint()" style="display:none" title="Migrate local data to SharePoint">Migrate to SP</button>
     <button class="btn btn-sm btn-primary" id="signInBtn" onclick="msalSignIn()" style="display:none">Sign in with 365</button>
@@ -341,7 +343,7 @@
     <div class="card">
       <div class="card-header">
         <h2>All Licenses</h2>
-        <button class="btn btn-sm btn-primary" onclick="openAddLicense()">+ Add License</button>
+        <button class="btn btn-sm btn-primary admin-edit-btn" onclick="openAddLicense()">+ Add License</button>
       </div>
       <div class="card-body">
         <div class="table-controls">
@@ -440,7 +442,7 @@
     <div class="card">
       <div class="card-header">
         <h2>Inspections & Audits</h2>
-        <button class="btn btn-sm btn-primary" onclick="openAddInspection()">+ Add Inspection</button>
+        <button class="btn btn-sm btn-primary admin-edit-btn" onclick="openAddInspection()">+ Add Inspection</button>
       </div>
       <div class="card-body">
         <div class="table-controls">
@@ -498,6 +500,76 @@
     </div>
   </div>
 
+  <!-- USER MANAGEMENT PAGE (Admin only) -->
+  <div class="page" id="page-users">
+    <div class="card">
+      <div class="card-header">
+        <h2>User Management</h2>
+        <button class="btn btn-sm btn-primary" onclick="openAddUser()">+ Add User</button>
+      </div>
+      <div class="card-body">
+        <p style="font-size:13px;color:var(--gray-500);margin-bottom:16px">Manage who can access the Licensing Portal and what they can see. Users not listed here will be denied access after sign-in.</p>
+        <div class="table-responsive">
+          <table class="data-table" id="userTable">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Email</th>
+                <th>Role</th>
+                <th>Location(s)</th>
+                <th>AD Office Location</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="userTableBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ADD/EDIT USER MODAL -->
+<div class="modal-overlay" id="userFormModal">
+  <div class="modal" style="max-width:600px">
+    <div class="modal-header">
+      <h2 id="userFormTitle">Add User</h2>
+      <button class="modal-close" onclick="closeModal('userFormModal')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <form id="userForm" onsubmit="saveUser(event)">
+        <div class="form-grid">
+          <div class="form-group full-width">
+            <label>Email Address *</label>
+            <input type="email" id="user_email" required placeholder="user@pharmacyinnovations.net">
+          </div>
+          <div class="form-group">
+            <label>Display Name</label>
+            <input type="text" id="user_name" placeholder="Will auto-fill from Azure AD">
+          </div>
+          <div class="form-group">
+            <label>Role *</label>
+            <select id="user_role" required onchange="toggleLocationSelect()">
+              <option value="admin">Admin — Full access, all locations</option>
+              <option value="office_staff">Office Staff — View all, download copies</option>
+              <option value="location_manager">Location Manager — Manage assigned locations</option>
+            </select>
+          </div>
+          <div class="form-group full-width" id="userLocationsGroup">
+            <label>Assigned Locations (for Location Manager)</label>
+            <div id="userLocationCheckboxes" style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:4px"></div>
+          </div>
+        </div>
+        <input type="hidden" id="user_editId">
+        <div class="form-actions">
+          <button type="button" class="btn btn-secondary" onclick="closeModal('userFormModal')">Cancel</button>
+          <button type="button" class="btn btn-danger btn-sm" id="deleteUserBtn" onclick="deleteCurrentUser()" style="display:none">Delete User</button>
+          <button type="submit" class="btn btn-primary">Save User</button>
+        </div>
+      </form>
+    </div>
+  </div>
 </div>
 
 <!-- LICENSE DETAIL MODAL -->
@@ -765,10 +837,14 @@ const MSAL_CONFIG = {
 const ADMIN_PREFIXES = ['abrown'];
 const ALLOWED_DOMAINS = ['pharmacyinnovations.net','pharmacyinnovationsnet.com','pharmacyinnovationsnet.onmicrosoft.com','communitypharmacy.com'];
 
+// Roles: admin = full access, office_staff = view all + download, location_manager = their locations + upload/edit expirations
+const ROLES = { ADMIN: 'admin', OFFICE_STAFF: 'office_staff', LOCATION_MANAGER: 'location_manager' };
+
 const SP_SITE_URL = 'https://pharmacyinnovationsnet.sharepoint.com/sites/Pixe';
 const SP_LIST_LICENSES = 'Licensing_Licenses';
 const SP_LIST_INSPECTIONS = 'Licensing_Inspections';
 const SP_LIST_DOCUMENTS = 'Licensing_Documents';
+const SP_LIST_USERS = 'Licensing_UserRoles';
 const SP_DOC_LIBRARY = 'Licensing_Files';
 const SP_CFG_KEY = 'licensing_sp_config';
 const GRAPH_BASE = 'https://graph.microsoft.com/v1.0';
@@ -777,10 +853,13 @@ let msalInstance = null;
 let msalAccount = null;
 let signedInUser = null;
 let isAdmin = false;
+let userRole = null; // ROLES.ADMIN, ROLES.OFFICE_STAFF, ROLES.LOCATION_MANAGER
+let userLocations = []; // locations this user can access (all for admin/office)
 let spSiteId = null;
 let spListIds = {};
 let spDriveId = null;
 let spConnected = false;
+let userRoles = []; // all user role records from SP
 
 // ===== DATA STORE =====
 const DATA_KEY = 'licensing_portal_data';
@@ -1182,7 +1261,7 @@ async function spConnect() {
     spSiteId = siteData.id;
 
     // Resolve list IDs
-    for (const listName of [SP_LIST_LICENSES, SP_LIST_INSPECTIONS, SP_LIST_DOCUMENTS]) {
+    for (const listName of [SP_LIST_LICENSES, SP_LIST_INSPECTIONS, SP_LIST_DOCUMENTS, SP_LIST_USERS]) {
       try {
         const listResp = await fetch(`${GRAPH_BASE}/sites/${spSiteId}/lists/${encodeURIComponent(listName)}`, { headers: { Authorization: `Bearer ${token}` } });
         if (listResp.ok) {
@@ -1259,6 +1338,13 @@ async function spCreateLists() {
       { name: 'UploadDate', text: {} },
       { name: 'FileUrl', text: {} },
       { name: 'FileType', text: {} }
+    ]},
+    { displayName: SP_LIST_USERS, columns: [
+      { name: 'Email', text: {} },
+      { name: 'DisplayName', text: {} },
+      { name: 'Role', text: {} },
+      { name: 'Locations', text: {} },
+      { name: 'ADOfficeLocation', text: {} }
     ]}
   ];
 
@@ -1764,7 +1850,11 @@ async function getToken() {
 async function onSignedIn(account) {
   signedInUser = { name: account.name, email: account.username || account.email || '' };
   const email = signedInUser.email.toLowerCase();
+
+  // Preliminary admin check (will be refined after SP loads)
   isAdmin = ADMIN_PREFIXES.some(p => email.startsWith(p + '@'));
+  userRole = isAdmin ? ROLES.ADMIN : null;
+  userLocations = isAdmin ? [...LOCATIONS] : [];
 
   document.getElementById('loginGate').style.display = 'none';
   document.getElementById('mainContent').style.display = 'block';
@@ -1775,22 +1865,28 @@ async function onSignedIn(account) {
   // Render with local data first (fast)
   renderAll();
 
-  // Then connect to SharePoint and load fresh data
+  // Connect to SharePoint and load fresh data
   const connected = await spConnect();
   if (connected) {
+    // Load user roles first so we know permissions
+    await loadUserRoles();
+    await resolveUserRole();
+
     const loaded = await loadFromSharePoint();
-    if (!loaded && licenses.length > 0) {
-      // SP lists exist but empty, local has data — prompt migration
-      if (isAdmin) {
-        showToast('SharePoint lists are empty. Use Settings to migrate data.', 'info');
-      }
+    if (!loaded && licenses.length > 0 && isAdmin) {
+      showToast('SharePoint lists are empty. Use Migrate to SP to push data.', 'info');
     }
-  } else if (licenses.length === 0) {
-    // No SP connection and no local data — import seed data
-    importSeedData();
-    renderAll();
+  } else {
+    // No SP — resolve role from hardcoded admin or default
+    await resolveUserRole();
+    if (licenses.length === 0) {
+      importSeedData();
+    }
   }
 
+  applyRoleUI();
+  renderAll();
+  if (canManageUsers()) renderUserTable();
   updateSpStatus();
 }
 
@@ -1819,7 +1915,8 @@ function renderAll() {
 // ===== DASHBOARD =====
 function renderDashboard() {
   const now = new Date();
-  const validLicenses = licenses.filter(l => l.expirationDate);
+  const accessibleLicenses = licenses.filter(l => canViewLocation(l.location));
+  const validLicenses = accessibleLicenses.filter(l => l.expirationDate);
   let expired = 0, within30 = 0, within90 = 0, within180 = 0, current = 0;
   const actionRequired = [];
 
@@ -1833,19 +1930,19 @@ function renderDashboard() {
   });
 
   // Also add status-based urgency
-  licenses.filter(l => l.renewalStatus === 'NEEDS DONE ASAP' && !actionRequired.find(a => a.id === l.id)).forEach(l => {
+  accessibleLicenses.filter(l => l.renewalStatus === 'NEEDS DONE ASAP' && !actionRequired.find(a => a.id === l.id)).forEach(l => {
     actionRequired.push({...l, urgency: 'asap', days: daysUntilExp(l.expirationDate)});
   });
 
   actionRequired.sort((a, b) => a.days - b.days);
 
   document.getElementById('dashStats').innerHTML = `
-    <div class="stat-card blue" onclick="filterAndNav('','')"><div class="stat-label">Total Licenses</div><div class="stat-value">${licenses.length}</div><div class="stat-sub">${LOCATIONS.length} locations</div></div>
+    <div class="stat-card blue" onclick="filterAndNav('','')"><div class="stat-label">Total Licenses</div><div class="stat-value">${accessibleLicenses.length}</div><div class="stat-sub">${userLocations.length} locations</div></div>
     <div class="stat-card red" onclick="filterAndNav('expired','')"><div class="stat-label">Expired</div><div class="stat-value">${expired}</div><div class="stat-sub">Needs immediate attention</div></div>
     <div class="stat-card orange" onclick="filterAndNav('30','')"><div class="stat-label">Expiring in 30 Days</div><div class="stat-value">${within30}</div><div class="stat-sub">Urgent renewal needed</div></div>
     <div class="stat-card sky" onclick="filterAndNav('90','')"><div class="stat-label">Expiring in 90 Days</div><div class="stat-value">${within90}</div><div class="stat-sub">Plan renewal soon</div></div>
     <div class="stat-card green" onclick="filterAndNav('','')"><div class="stat-label">Current</div><div class="stat-value">${current}</div><div class="stat-sub">Valid &gt; 6 months</div></div>
-    <div class="stat-card purple"><div class="stat-label">Pending Action</div><div class="stat-value">${licenses.filter(l => l.renewalStatus && l.renewalStatus !== 'SUBMITTED-WAITING').length}</div><div class="stat-sub">Needs info / ASAP / 3 months</div></div>
+    <div class="stat-card purple"><div class="stat-label">Pending Action</div><div class="stat-value">${accessibleLicenses.filter(l => l.renewalStatus && l.renewalStatus !== 'SUBMITTED-WAITING').length}</div><div class="stat-sub">Needs info / ASAP / 3 months</div></div>
   `;
 
   // Urgent list
@@ -1906,7 +2003,7 @@ function renderExpirationCalendar() {
 
 function renderLocationSummary() {
   let html = '<table class="data-table"><thead><tr><th>Location</th><th>Total</th><th>Expired</th><th>&lt;30 Days</th><th>&lt;90 Days</th><th>Current</th><th>Pending</th></tr></thead><tbody>';
-  LOCATIONS.forEach(loc => {
+  LOCATIONS.filter(loc => canViewLocation(loc)).forEach(loc => {
     const locLics = licenses.filter(l => l.location === loc);
     const withExp = locLics.filter(l => l.expirationDate);
     const exp = withExp.filter(l => daysUntilExp(l.expirationDate) < 0).length;
@@ -1941,7 +2038,8 @@ function filterAndNav(urgency, location) {
 
 // ===== LOCATIONS GRID =====
 function renderLocationsGrid() {
-  const html = LOCATIONS.map(loc => {
+  const visibleLocations = LOCATIONS.filter(loc => canViewLocation(loc));
+  const html = visibleLocations.map(loc => {
     const info = LOCATION_INFO[loc] || {};
     const locLics = licenses.filter(l => l.location === loc);
     const withExp = locLics.filter(l => l.expirationDate);
@@ -1973,13 +2071,15 @@ function renderLocationsGrid() {
 
 function openLocationDetail(loc) {
   const info = LOCATION_INFO[loc] || {};
+  const canUploadHere = canUpload(loc);
+  const canEditHere = canEditLocation(loc);
   document.getElementById('locDetailTitle').textContent = (info.dba || loc) + ' — ' + loc;
   const locLics = licenses.filter(l => l.location === loc);
 
   let html = '<div class="sub-tabs" id="locSubTabs">';
   html += '<button class="sub-tab active" onclick="showLocTab(this,\'locOverview\')">Overview</button>';
   html += '<button class="sub-tab" onclick="showLocTab(this,\'locLicenses\')">Licenses (' + locLics.length + ')</button>';
-  html += '<button class="sub-tab" onclick="showLocTab(this,\'locCredentials\')">Credentials</button>';
+  if (canViewCredentials()) html += '<button class="sub-tab" onclick="showLocTab(this,\'locCredentials\')">Credentials</button>';
   html += '</div>';
 
   // Overview sub-tab
@@ -2027,10 +2127,10 @@ function openLocationDetail(loc) {
             ? '<a href="'+(l.licenseCopyUrl || l.licenseCopy)+'" '+(l.licenseCopyUrl ? 'target="_blank"' : 'download="'+escHtml(l.licenseCopyName)+'"')+' class="btn btn-sm btn-success" style="font-size:11px">View Document</a> '
             : ''
           }
-          <label class="btn btn-sm btn-${hasFile ? 'secondary' : 'primary'}" style="font-size:11px;cursor:pointer;margin:0">
-            ${hasFile ? 'Replace' : 'Upload'}
-            <input type="file" accept=".pdf,.png,.jpg,.jpeg,.doc,.docx" style="display:none" onchange="quickUploadLicenseCopy('${l.id}', this)">
-          </label>
+          ${canUploadHere ? '<label class="btn btn-sm btn-'+(hasFile ? 'secondary' : 'primary')+'" style="font-size:11px;cursor:pointer;margin:0">'
+            +(hasFile ? 'Replace' : 'Upload')
+            +'<input type="file" accept=".pdf,.png,.jpg,.jpeg,.doc,.docx" style="display:none" onchange="quickUploadLicenseCopy(\''+l.id+'\', this)">'
+            +'</label>' : (!hasFile ? '<span style="font-size:12px;color:var(--gray-400)">No document</span>' : '')}
         </td>
       </tr>`;
     });
@@ -2086,10 +2186,10 @@ function openLocationDetail(loc) {
           ? '<a href="'+(l.licenseCopyUrl || l.licenseCopy)+'" '+(l.licenseCopyUrl ? 'target="_blank"' : 'download="'+escHtml(l.licenseCopyName || 'license')+'"')+' class="btn btn-sm btn-success" style="font-size:11px" onclick="event.stopPropagation()">View</a> '
           : ''
         }
-        <label class="btn btn-sm btn-${hasFile ? 'secondary' : 'primary'}" style="font-size:11px;cursor:pointer;margin:0" onclick="event.stopPropagation()">
-          ${hasFile ? 'Replace' : 'Upload'}
-          <input type="file" accept=".pdf,.png,.jpg,.jpeg,.doc,.docx" style="display:none" onchange="quickUploadLicenseCopy('${l.id}', this)">
-        </label>
+        ${canUploadHere ? '<label class="btn btn-sm btn-'+(hasFile ? 'secondary' : 'primary')+'" style="font-size:11px;cursor:pointer;margin:0" onclick="event.stopPropagation()">'
+          +(hasFile ? 'Replace' : 'Upload')
+          +'<input type="file" accept=".pdf,.png,.jpg,.jpeg,.doc,.docx" style="display:none" onchange="quickUploadLicenseCopy(\''+l.id+'\', this)">'
+          +'</label>' : ''}
       </td>
     </tr>`;
   });
@@ -2122,7 +2222,7 @@ function openLocationDetail(loc) {
 function showLocTab(btn, tabId) {
   btn.parentElement.querySelectorAll('.sub-tab').forEach(t => t.classList.remove('active'));
   btn.classList.add('active');
-  ['locOverview','locLicenses','locCredentials'].forEach(id => {
+  ['locOverview','locLicenses','locCredentials'].filter(id => document.getElementById(id)).forEach(id => {
     const el = document.getElementById(id);
     if (el) el.style.display = id === tabId ? 'block' : 'none';
   });
@@ -2137,6 +2237,7 @@ function renderLicenseTable() {
   const statFilter = document.getElementById('statusFilter').value;
 
   let filtered = licenses.filter(l => {
+    if (!canViewLocation(l.location)) return false;
     if (search && !(l.state+l.licenseNumber+l.location+l.licenseHolder+l.notes).toLowerCase().includes(search)) return false;
     if (locFilter && l.location !== locFilter) return false;
     if (typeFilter && l.type !== typeFilter) return false;
@@ -2731,6 +2832,235 @@ async function quickUploadLicenseCopy(licId, input) {
   setTimeout(() => openLocationDetail(currentLoc), 300);
 }
 
+// ===== ROLE-BASED ACCESS CONTROL =====
+async function loadUserRoles() {
+  if (!spConnected || !spListIds[SP_LIST_USERS]) return;
+  const items = await spFetchAll(SP_LIST_USERS);
+  userRoles = items.map(item => ({
+    id: item.id,
+    spItemId: item.id,
+    email: (item.fields.Email || item.fields.Title || '').toLowerCase(),
+    displayName: item.fields.DisplayName || '',
+    role: item.fields.Role || ROLES.LOCATION_MANAGER,
+    locations: (item.fields.Locations || '').split(',').map(s => s.trim()).filter(Boolean),
+    adOfficeLocation: item.fields.ADOfficeLocation || ''
+  }));
+}
+
+async function resolveUserRole() {
+  if (!signedInUser) return;
+  const email = signedInUser.email.toLowerCase();
+
+  // Admin check (hardcoded)
+  if (ADMIN_PREFIXES.some(p => email.startsWith(p + '@'))) {
+    userRole = ROLES.ADMIN;
+    isAdmin = true;
+    userLocations = [...LOCATIONS];
+    return;
+  }
+
+  // Check SharePoint user roles list
+  if (userRoles.length > 0) {
+    const userRecord = userRoles.find(u => u.email === email);
+    if (userRecord) {
+      userRole = userRecord.role;
+      if (userRecord.role === ROLES.ADMIN) {
+        isAdmin = true;
+        userLocations = [...LOCATIONS];
+      } else if (userRecord.role === ROLES.OFFICE_STAFF) {
+        isAdmin = false;
+        userLocations = [...LOCATIONS]; // can view all
+      } else {
+        isAdmin = false;
+        userLocations = userRecord.locations.length > 0 ? userRecord.locations : [...LOCATIONS];
+      }
+      return;
+    }
+  }
+
+  // Not in the list — try to pull Azure AD office location and default to no access
+  // For now, allow access with limited view if they're on an allowed domain
+  const domain = email.split('@')[1];
+  if (ALLOWED_DOMAINS.includes(domain)) {
+    userRole = ROLES.OFFICE_STAFF; // default to office staff for recognized domains
+    userLocations = [...LOCATIONS];
+  } else {
+    userRole = null; // no access
+    userLocations = [];
+  }
+}
+
+function canEdit() { return userRole === ROLES.ADMIN; }
+function canEditLocation(loc) { return userRole === ROLES.ADMIN || (userRole === ROLES.LOCATION_MANAGER && userLocations.includes(loc)); }
+function canUpload(loc) { return userRole === ROLES.ADMIN || (userRole === ROLES.LOCATION_MANAGER && userLocations.includes(loc)); }
+function canViewCredentials() { return userRole === ROLES.ADMIN; }
+function canViewLocation(loc) { return userRole === ROLES.ADMIN || userRole === ROLES.OFFICE_STAFF || (userRole === ROLES.LOCATION_MANAGER && userLocations.includes(loc)); }
+function canManageUsers() { return userRole === ROLES.ADMIN; }
+function canDownload() { return true; } // all roles can download
+
+function applyRoleUI() {
+  // Show/hide admin-only elements
+  document.querySelectorAll('.admin-only-tab').forEach(el => {
+    el.style.display = canManageUsers() ? '' : 'none';
+  });
+
+  // Show/hide add buttons based on role
+  document.querySelectorAll('.admin-edit-btn').forEach(el => {
+    el.style.display = canEdit() ? '' : 'none';
+  });
+
+  // Update role badge in navbar
+  const roleLabel = userRole === ROLES.ADMIN ? 'Admin' : userRole === ROLES.OFFICE_STAFF ? 'Office Staff' : userRole === ROLES.LOCATION_MANAGER ? 'Location Mgr' : 'No Role';
+  const roleEl = document.getElementById('userRoleBadge');
+  if (roleEl) {
+    roleEl.textContent = roleLabel;
+    roleEl.style.display = 'inline-block';
+  }
+}
+
+// ===== USER MANAGEMENT =====
+async function fetchADOfficeLocation(email) {
+  const token = await getToken();
+  if (!token) return '';
+  try {
+    const resp = await fetch(`${GRAPH_BASE}/users/${encodeURIComponent(email)}?$select=officeLocation,displayName`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    if (resp.ok) {
+      const data = await resp.json();
+      return { office: data.officeLocation || '', name: data.displayName || '' };
+    }
+  } catch(e) { console.warn('AD lookup failed:', e); }
+  return { office: '', name: '' };
+}
+
+function renderUserTable() {
+  const html = userRoles.map(u => {
+    const roleName = u.role === ROLES.ADMIN ? 'Admin' : u.role === ROLES.OFFICE_STAFF ? 'Office Staff' : 'Location Manager';
+    const roleClass = u.role === ROLES.ADMIN ? 'badge-urgent' : u.role === ROLES.OFFICE_STAFF ? 'badge-pharmacy' : 'badge-ok';
+    return `<tr>
+      <td><strong>${escHtml(u.displayName)}</strong></td>
+      <td>${escHtml(u.email)}</td>
+      <td><span class="badge ${roleClass}">${roleName}</span></td>
+      <td>${u.role === ROLES.LOCATION_MANAGER ? u.locations.join(', ') : '<span style="color:var(--gray-400)">All locations</span>'}</td>
+      <td>${escHtml(u.adOfficeLocation)}</td>
+      <td><button class="btn btn-sm btn-secondary" onclick="openEditUser('${u.spItemId}')">Edit</button></td>
+    </tr>`;
+  }).join('');
+  document.getElementById('userTableBody').innerHTML = html || '<tr><td colspan="6" class="empty-state">No users configured. Admin (abrown) always has full access.</td></tr>';
+}
+
+function openAddUser() {
+  document.getElementById('userFormTitle').textContent = 'Add User';
+  document.getElementById('userForm').reset();
+  document.getElementById('user_editId').value = '';
+  document.getElementById('deleteUserBtn').style.display = 'none';
+  buildLocationCheckboxes([]);
+  toggleLocationSelect();
+  openModal('userFormModal');
+}
+
+function openEditUser(spId) {
+  const u = userRoles.find(r => String(r.spItemId) === String(spId));
+  if (!u) return;
+  document.getElementById('userFormTitle').textContent = 'Edit User';
+  document.getElementById('user_editId').value = u.spItemId;
+  document.getElementById('user_email').value = u.email;
+  document.getElementById('user_name').value = u.displayName;
+  document.getElementById('user_role').value = u.role;
+  document.getElementById('deleteUserBtn').style.display = 'inline-flex';
+  buildLocationCheckboxes(u.locations);
+  toggleLocationSelect();
+  openModal('userFormModal');
+}
+
+function buildLocationCheckboxes(selectedLocs) {
+  const container = document.getElementById('userLocationCheckboxes');
+  container.innerHTML = LOCATIONS.map(loc => {
+    const checked = selectedLocs.includes(loc) ? 'checked' : '';
+    return `<label style="font-size:13px;display:flex;align-items:center;gap:6px;cursor:pointer">
+      <input type="checkbox" class="loc-check" value="${loc}" ${checked}> ${loc}
+    </label>`;
+  }).join('');
+}
+
+function toggleLocationSelect() {
+  const role = document.getElementById('user_role').value;
+  document.getElementById('userLocationsGroup').style.display = role === ROLES.LOCATION_MANAGER ? 'block' : 'none';
+}
+
+async function saveUser(e) {
+  e.preventDefault();
+  const editId = document.getElementById('user_editId').value;
+  const email = document.getElementById('user_email').value.toLowerCase().trim();
+  const role = document.getElementById('user_role').value;
+  let displayName = document.getElementById('user_name').value.trim();
+
+  // Get selected locations
+  const selectedLocs = [...document.querySelectorAll('.loc-check:checked')].map(cb => cb.value);
+
+  // Fetch AD info if name is empty
+  let adOffice = '';
+  if (!displayName) {
+    const ad = await fetchADOfficeLocation(email);
+    displayName = ad.name || email.split('@')[0];
+    adOffice = ad.office;
+  }
+
+  const fields = {
+    Title: email,
+    Email: email,
+    DisplayName: displayName,
+    Role: role,
+    Locations: role === ROLES.LOCATION_MANAGER ? selectedLocs.join(', ') : '',
+    ADOfficeLocation: adOffice
+  };
+
+  if (spConnected && spListIds[SP_LIST_USERS]) {
+    if (editId) {
+      await spUpdateItem(SP_LIST_USERS, editId, fields);
+    } else {
+      await spCreateItem(SP_LIST_USERS, fields);
+    }
+    await loadUserRoles();
+  } else {
+    // Local fallback
+    const localUser = {
+      id: editId || Date.now().toString(),
+      spItemId: editId || '',
+      email, displayName, role,
+      locations: selectedLocs,
+      adOfficeLocation: adOffice
+    };
+    if (editId) {
+      const idx = userRoles.findIndex(u => String(u.spItemId) === String(editId));
+      if (idx >= 0) userRoles[idx] = localUser;
+    } else {
+      userRoles.push(localUser);
+    }
+  }
+
+  closeModal('userFormModal');
+  renderUserTable();
+  showToast(editId ? 'User updated' : 'User added', 'success');
+}
+
+async function deleteCurrentUser() {
+  const editId = document.getElementById('user_editId').value;
+  if (!editId || !confirm('Remove this user from the licensing portal?')) return;
+
+  if (spConnected && spListIds[SP_LIST_USERS]) {
+    await spDeleteItem(SP_LIST_USERS, editId);
+    await loadUserRoles();
+  } else {
+    userRoles = userRoles.filter(u => String(u.spItemId) !== String(editId));
+  }
+
+  closeModal('userFormModal');
+  renderUserTable();
+  showToast('User removed', 'success');
+}
+
 function updateSpStatus() {
   const el = document.getElementById('spStatus');
   const migrateBtn = document.getElementById('migrateBtn');
@@ -2783,11 +3113,15 @@ document.addEventListener('keydown', e => {
 function devBypass() {
   signedInUser = { name: 'Dev User', email: 'abrown@pharmacyinnovations.net' };
   isAdmin = true;
+  userRole = ROLES.ADMIN;
+  userLocations = [...LOCATIONS];
   document.getElementById('loginGate').style.display = 'none';
   document.getElementById('mainContent').style.display = 'block';
   document.getElementById('userInfo').textContent = 'Dev Mode';
   if (licenses.length === 0) importSeedData();
+  applyRoleUI();
   renderAll();
+  renderUserTable();
   updateSpStatus();
 }
 
