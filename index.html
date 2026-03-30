@@ -133,6 +133,8 @@
   .badge-dea { background: #fef3c7; color: #92400e; }
   .badge-controlled { background: #fce7f3; color: #be185d; }
   .badge-sterile { background: #ccfbf1; color: #0f766e; }
+  .badge-hemp { background: #ecfccb; color: #3f6212; }
+  .badge-pseudoephedrine { background: #fef9c3; color: #854d0e; }
   .badge-other { background: var(--gray-100); color: var(--gray-600); }
 
   .status-badge { padding: 3px 10px; border-radius: 12px; font-size: 12px; font-weight: 500; }
@@ -357,6 +359,8 @@
             <option value="DEA">DEA</option>
             <option value="Controlled Substance">Controlled Substance</option>
             <option value="Sterile Compounding">Sterile Compounding</option>
+            <option value="Hemp">Hemp</option>
+            <option value="Pseudoephedrine">Pseudoephedrine (PSE)</option>
             <option value="Other">Other</option>
           </select>
           <select class="filter-select" id="urgencyFilter" onchange="renderLicenseTable()">
@@ -540,6 +544,8 @@
               <option value="DEA">DEA</option>
               <option value="Controlled Substance">Controlled Substance</option>
               <option value="Sterile Compounding">Sterile Compounding</option>
+              <option value="Hemp">Hemp</option>
+              <option value="Pseudoephedrine">Pseudoephedrine (PSE)</option>
               <option value="Technician">Technician</option>
               <option value="Medicaid">Medicaid</option>
               <option value="Business">Business</option>
@@ -1672,9 +1678,11 @@ function detectLicenseType(stateName) {
   if (s.includes('dea')) return 'DEA';
   if (s.includes('control sub') || s.includes('controlled') || s.includes('narcotic')) return 'Controlled Substance';
   if (s.includes('sterile') || s.includes('parenteral') || s.includes('compounding')) return 'Sterile Compounding';
+  if (s.includes('hemp') || s.includes('cbd')) return 'Hemp';
+  if (s.includes('pseudoephedrine') || s.includes('pse') || s.includes('nplex') || s.includes('meth')) return 'Pseudoephedrine';
   if (s.includes('medicaid') || s.includes('tmhp') || s.includes('cms')) return 'Medicaid';
   if (s.includes('injectable')) return 'Pharmacist';
-  if (s.includes('alarm') || s.includes('business') || s.includes('nabp') || s.includes('ncpdp') || s.includes('ein') || s.includes('npi') || s.includes('secretary') || s.includes('health commerce') || s.includes('cbd')) return 'Other';
+  if (s.includes('alarm') || s.includes('business') || s.includes('nabp') || s.includes('ncpdp') || s.includes('ein') || s.includes('npi') || s.includes('secretary') || s.includes('health commerce')) return 'Other';
   return 'Pharmacy';
 }
 
@@ -2002,7 +2010,7 @@ function openLocationDetail(loc) {
 
   // Key licenses with links
   html += '<div class="card" style="margin-bottom:16px"><div class="card-header"><h2>Key Licenses</h2></div><div class="card-body">';
-  const keyTypes = ['Pharmacy','DEA','Controlled Substance','Sterile Compounding'];
+  const keyTypes = ['Pharmacy','DEA','Controlled Substance','Sterile Compounding','Hemp','Pseudoephedrine'];
   const keyLics = locLics.filter(l => keyTypes.includes(l.type) || l.state.match(/^(DEA|NPI|NABP)/));
   if (keyLics.length) {
     html += '<table class="data-table"><thead><tr><th>License</th><th>Number</th><th>Expiration</th><th>Status</th><th>License Document</th></tr></thead><tbody>';
