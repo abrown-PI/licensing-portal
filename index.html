@@ -537,13 +537,22 @@
     <div class="modal-body">
       <form id="userForm" onsubmit="saveUser(event)">
         <div class="form-grid">
-          <div class="form-group full-width">
-            <label>Email Address *</label>
-            <input type="email" id="user_email" required placeholder="user@pharmacyinnovations.net">
+          <div class="form-group full-width" style="position:relative">
+            <label>Search by Name *</label>
+            <input type="text" id="user_search" placeholder="Start typing a name..." autocomplete="off" oninput="searchADUsers(this.value)">
+            <div id="userSearchResults" style="display:none;position:absolute;top:100%;left:0;right:0;background:white;border:1px solid var(--gray-300);border-radius:var(--radius);box-shadow:var(--shadow-md);max-height:200px;overflow-y:auto;z-index:10"></div>
           </div>
           <div class="form-group">
             <label>Display Name</label>
-            <input type="text" id="user_name" placeholder="Will auto-fill from Azure AD">
+            <input type="text" id="user_name" readonly style="background:var(--gray-50)">
+          </div>
+          <div class="form-group">
+            <label>Email</label>
+            <input type="email" id="user_email" readonly style="background:var(--gray-50)">
+          </div>
+          <div class="form-group">
+            <label>Office Location (from AD)</label>
+            <input type="text" id="user_office" readonly style="background:var(--gray-50)">
           </div>
           <div class="form-group">
             <label>Role *</label>
@@ -2947,11 +2956,62 @@ function renderUserTable() {
   document.getElementById('userTableBody').innerHTML = html || '<tr><td colspan="6" class="empty-state">No users configured. Admin (abrown) always has full access.</td></tr>';
 }
 
+let adSearchTimeout = null;
+
+async function searchADUsers(query) {
+  const resultsDiv = document.getElementById('userSearchResults');
+  if (query.length < 2) { resultsDiv.style.display = 'none'; return; }
+
+  clearTimeout(adSearchTimeout);
+  adSearchTimeout = setTimeout(async () => {
+    const token = await getToken();
+    if (!token) return;
+    try {
+      const q = encodeURIComponent(query);
+      const resp = await fetch(
+        `${GRAPH_BASE}/users?$filter=startswith(displayName,'${q}') or startswith(givenName,'${q}') or startswith(surname,'${q}')&$top=10&$select=displayName,mail,userPrincipalName,officeLocation,jobTitle`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      if (!resp.ok) return;
+      const data = await resp.json();
+      const users = data.value || [];
+      if (users.length === 0) {
+        resultsDiv.innerHTML = '<div style="padding:10px;font-size:13px;color:var(--gray-400)">No users found</div>';
+      } else {
+        resultsDiv.innerHTML = users.map(u => {
+          const email = u.mail || u.userPrincipalName || '';
+          return `<div style="padding:10px 12px;cursor:pointer;font-size:13px;border-bottom:1px solid var(--gray-100);display:flex;justify-content:space-between"
+            onmouseover="this.style.background='var(--gray-50)'" onmouseout="this.style.background=''"
+            onclick="selectADUser('${escHtml(u.displayName)}','${escHtml(email)}','${escHtml(u.officeLocation || '')}')">
+            <div><strong>${escHtml(u.displayName)}</strong><br><span style="color:var(--gray-500)">${escHtml(email)}</span></div>
+            <div style="text-align:right;color:var(--gray-400);font-size:11px">${escHtml(u.jobTitle || '')}<br>${escHtml(u.officeLocation || '')}</div>
+          </div>`;
+        }).join('');
+      }
+      resultsDiv.style.display = 'block';
+    } catch(e) { console.warn('AD search error:', e); }
+  }, 300);
+}
+
+function selectADUser(name, email, office) {
+  document.getElementById('user_name').value = name;
+  document.getElementById('user_email').value = email;
+  document.getElementById('user_office').value = office;
+  document.getElementById('user_search').value = name;
+  document.getElementById('userSearchResults').style.display = 'none';
+}
+
 function openAddUser() {
   document.getElementById('userFormTitle').textContent = 'Add User';
   document.getElementById('userForm').reset();
   document.getElementById('user_editId').value = '';
+  document.getElementById('user_search').readOnly = false;
+  document.getElementById('user_search').value = '';
+  document.getElementById('user_name').value = '';
+  document.getElementById('user_email').value = '';
+  document.getElementById('user_office').value = '';
   document.getElementById('deleteUserBtn').style.display = 'none';
+  document.getElementById('userSearchResults').style.display = 'none';
   buildLocationCheckboxes([]);
   toggleLocationSelect();
   openModal('userFormModal');
@@ -2962,10 +3022,14 @@ function openEditUser(spId) {
   if (!u) return;
   document.getElementById('userFormTitle').textContent = 'Edit User';
   document.getElementById('user_editId').value = u.spItemId;
-  document.getElementById('user_email').value = u.email;
+  document.getElementById('user_search').value = u.displayName;
+  document.getElementById('user_search').readOnly = true;
   document.getElementById('user_name').value = u.displayName;
+  document.getElementById('user_email').value = u.email;
+  document.getElementById('user_office').value = u.adOfficeLocation || '';
   document.getElementById('user_role').value = u.role;
   document.getElementById('deleteUserBtn').style.display = 'inline-flex';
+  document.getElementById('userSearchResults').style.display = 'none';
   buildLocationCheckboxes(u.locations);
   toggleLocationSelect();
   openModal('userFormModal');
@@ -2991,20 +3055,14 @@ async function saveUser(e) {
   const editId = document.getElementById('user_editId').value;
   const email = document.getElementById('user_email').value.toLowerCase().trim();
   const role = document.getElementById('user_role').value;
-  let displayName = document.getElementById('user_name').value.trim();
+  const displayName = document.getElementById('user_name').value.trim();
+  const adOffice = document.getElementById('user_office').value.trim();
+
+  if (!email) { showToast('Please search and select a user first', 'error'); return; }
+  if (!displayName) { showToast('Please search and select a user first', 'error'); return; }
 
   // Get selected locations
   const selectedLocs = [...document.querySelectorAll('.loc-check:checked')].map(cb => cb.value);
-
-  // Always fetch AD info for office location, and name if not provided
-  let adOffice = '';
-  try {
-    const ad = await fetchADOfficeLocation(email);
-    if (!displayName) displayName = ad.name || email.split('@')[0];
-    adOffice = ad.office || '';
-  } catch(e) {
-    if (!displayName) displayName = email.split('@')[0];
-  }
 
   const fields = {
     Title: email,
@@ -3089,6 +3147,12 @@ document.querySelectorAll('.modal-overlay').forEach(overlay => {
   overlay.addEventListener('click', e => {
     if (e.target === overlay) overlay.classList.remove('open');
   });
+});
+
+// Close search dropdown when clicking elsewhere
+document.addEventListener('click', e => {
+  const sr = document.getElementById('userSearchResults');
+  if (sr && !e.target.closest('#user_search') && !e.target.closest('#userSearchResults')) sr.style.display = 'none';
 });
 
 // ESC to close modals
