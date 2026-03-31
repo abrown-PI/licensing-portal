@@ -513,8 +513,8 @@
                 <th>Name</th>
                 <th>Email</th>
                 <th>Role</th>
-                <th>Location(s)</th>
-                <th>Location</th>
+                <th>Assigned Location(s)</th>
+                <th>Office</th>
                 <th>Actions</th>
               </tr>
             </thead>
@@ -3020,11 +3020,11 @@ function openAddUser() {
 function openEditUser(spId) {
   const u = userRoles.find(r => String(r.spItemId) === String(spId));
   if (!u) return;
-  document.getElementById('userFormTitle').textContent = 'Edit User';
+  document.getElementById('userFormTitle').textContent = 'Edit User — ' + (u.displayName || u.email);
   document.getElementById('user_editId').value = u.spItemId;
-  document.getElementById('user_search').value = u.displayName;
-  document.getElementById('user_search').readOnly = true;
-  document.getElementById('user_name').value = u.displayName;
+  document.getElementById('user_search').value = u.displayName || u.email;
+  document.getElementById('user_search').readOnly = false;
+  document.getElementById('user_name').value = u.displayName || '';
   document.getElementById('user_email').value = u.email;
   document.getElementById('user_office').value = u.adOfficeLocation || '';
   document.getElementById('user_role').value = u.role;
@@ -3055,11 +3055,15 @@ async function saveUser(e) {
   const editId = document.getElementById('user_editId').value;
   const email = document.getElementById('user_email').value.toLowerCase().trim();
   const role = document.getElementById('user_role').value;
-  const displayName = document.getElementById('user_name').value.trim();
+  let displayName = document.getElementById('user_name').value.trim();
   const adOffice = document.getElementById('user_office').value.trim();
 
+  // If editing and no name was set, use the search field value or email prefix
+  if (!displayName) {
+    displayName = document.getElementById('user_search').value.trim() || '';
+  }
   if (!email) { showToast('Please search and select a user first', 'error'); return; }
-  if (!displayName) { showToast('Please search and select a user first', 'error'); return; }
+  if (!displayName) { displayName = email.split('@')[0]; }
 
   // Get selected locations
   const selectedLocs = [...document.querySelectorAll('.loc-check:checked')].map(cb => cb.value);
