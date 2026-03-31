@@ -828,7 +828,7 @@ const MSAL_CONFIG = {
   clientId: 'cdb59f36-332f-47fe-bf78-5b716cd9e7d8',
   tenantId: '14c4fb10-085e-4ac6-a5b3-d49f57a97731',
   authority: 'https://login.microsoftonline.com/organizations',
-  scopes: ['User.Read', 'Sites.ReadWrite.All']
+  scopes: ['User.Read', 'User.ReadBasic.All', 'Sites.ReadWrite.All']
 };
 
 const ADMIN_PREFIXES = ['abrown'];
@@ -2996,12 +2996,14 @@ async function saveUser(e) {
   // Get selected locations
   const selectedLocs = [...document.querySelectorAll('.loc-check:checked')].map(cb => cb.value);
 
-  // Fetch AD info if name is empty
+  // Always fetch AD info for office location, and name if not provided
   let adOffice = '';
-  if (!displayName) {
+  try {
     const ad = await fetchADOfficeLocation(email);
-    displayName = ad.name || email.split('@')[0];
-    adOffice = ad.office;
+    if (!displayName) displayName = ad.name || email.split('@')[0];
+    adOffice = ad.office || '';
+  } catch(e) {
+    if (!displayName) displayName = email.split('@')[0];
   }
 
   const fields = {
