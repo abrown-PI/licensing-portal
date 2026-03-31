@@ -2842,15 +2842,23 @@ async function quickUploadLicenseCopy(licId, input) {
 async function loadUserRoles() {
   if (!spConnected || !spListIds[SP_LIST_USERS]) return;
   const items = await spFetchAll(SP_LIST_USERS);
-  userRoles = items.map(item => ({
-    id: item.id,
-    spItemId: item.id,
-    email: (item.fields.Email || item.fields.Title || '').toLowerCase(),
-    displayName: item.fields.DisplayName || '',
-    role: item.fields.Role || ROLES.LOCATION_MANAGER,
-    locations: (item.fields.Locations || '').split(',').map(s => s.trim()).filter(Boolean),
-    adOfficeLocation: item.fields.ADOfficeLocation || ''
-  }));
+  console.log('SP User fields sample:', items.length > 0 ? JSON.stringify(items[0].fields) : 'no items');
+  userRoles = items.map(item => {
+    const f = item.fields;
+    // SharePoint may use different internal names — check all possibilities
+    const name = f.DisplayName || f.DisplayName0 || f.OData__DisplayName || f.Title || '';
+    const email = (f.Email || f.Email0 || f.Title || '').toLowerCase();
+    const office = f.ADOfficeLocation || f.ADOfficeLocation0 || '';
+    return {
+      id: item.id,
+      spItemId: item.id,
+      email: email,
+      displayName: name,
+      role: f.Role || ROLES.LOCATION_MANAGER,
+      locations: (f.Locations || '').split(',').map(s => s.trim()).filter(Boolean),
+      adOfficeLocation: office
+    };
+  });
 }
 
 async function resolveUserRole() {
@@ -3069,13 +3077,14 @@ async function saveUser(e) {
   const selectedLocs = [...document.querySelectorAll('.loc-check:checked')].map(cb => cb.value);
 
   const fields = {
-    Title: email,
+    Title: displayName || email,
     Email: email,
     DisplayName: displayName,
     Role: role,
     Locations: role === ROLES.LOCATION_MANAGER ? selectedLocs.join(', ') : '',
     ADOfficeLocation: adOffice
   };
+  console.log('Saving user fields:', JSON.stringify(fields));
 
   if (spConnected && spListIds[SP_LIST_USERS]) {
     if (editId) {
