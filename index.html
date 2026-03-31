@@ -2859,6 +2859,26 @@ async function loadUserRoles() {
       adOfficeLocation: office
     };
   });
+  // Backfill missing office locations from Azure AD
+  backfillOfficeLocations();
+}
+
+async function backfillOfficeLocations() {
+  for (const u of userRoles) {
+    if (!u.adOfficeLocation && u.email) {
+      try {
+        const adInfo = await fetchADOfficeLocation(u.email);
+        if (adInfo.office) {
+          u.adOfficeLocation = adInfo.office;
+          // Update SharePoint with the fetched office location
+          if (spConnected && spListIds[SP_LIST_USERS] && u.spItemId) {
+            await spUpdateItem(SP_LIST_USERS, u.spItemId, { ADOfficeLocation: adInfo.office });
+          }
+        }
+      } catch(e) { console.warn('Backfill office failed for', u.email, e); }
+    }
+  }
+  renderUserTable();
 }
 
 async function resolveUserRole() {
