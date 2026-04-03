@@ -2883,19 +2883,35 @@ async function backfillOfficeLocations() {
 
 async function resolveUserRole() {
   if (!signedInUser) return;
-  const email = signedInUser.email.toLowerCase();
+  const upn = signedInUser.email.toLowerCase();
+
+  // Also fetch the user's mail property from Graph (may differ from UPN)
+  let graphMail = '';
+  try {
+    const token = await getToken();
+    if (token) {
+      const resp = await fetch(`${GRAPH_BASE}/me?$select=mail,userPrincipalName`, { headers: { Authorization: `Bearer ${token}` } });
+      if (resp.ok) {
+        const data = await resp.json();
+        graphMail = (data.mail || '').toLowerCase();
+      }
+    }
+  } catch(e) { console.warn('Graph /me lookup failed:', e); }
+
+  const emailsToMatch = [upn, graphMail].filter(Boolean);
+  console.log('Role lookup — UPN:', upn, 'Graph mail:', graphMail);
 
   // Admin check (hardcoded)
-  if (ADMIN_PREFIXES.some(p => email.startsWith(p + '@'))) {
+  if (emailsToMatch.some(em => ADMIN_PREFIXES.some(p => em.startsWith(p + '@')))) {
     userRole = ROLES.ADMIN;
     isAdmin = true;
     userLocations = [...LOCATIONS];
     return;
   }
 
-  // Check SharePoint user roles list
+  // Check SharePoint user roles list — match against both UPN and Graph mail
   if (userRoles.length > 0) {
-    const userRecord = userRoles.find(u => u.email === email);
+    const userRecord = userRoles.find(u => emailsToMatch.includes(u.email));
     if (userRecord) {
       userRole = userRecord.role;
       if (userRecord.role === ROLES.ADMIN) {
@@ -2912,9 +2928,8 @@ async function resolveUserRole() {
     }
   }
 
-  // Not in the list — try to pull Azure AD office location and default to no access
-  // For now, allow access with limited view if they're on an allowed domain
-  const domain = email.split('@')[1];
+  // Not in the list — default based on domain
+  const domain = upn.split('@')[1];
   if (ALLOWED_DOMAINS.includes(domain)) {
     userRole = ROLES.OFFICE_STAFF; // default to office staff for recognized domains
     userLocations = [...LOCATIONS];
