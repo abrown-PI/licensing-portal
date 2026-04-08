@@ -1957,7 +1957,7 @@ function renderDashboard() {
                   l.urgency === '30' ? '<span class="badge badge-urgent">'+l.days+' days</span>' :
                   l.urgency === '90' ? '<span class="badge badge-warning">'+l.days+' days</span>' :
                   '<span class="badge badge-urgent">ASAP</span>';
-    return `<div class="exp-item" onclick="openLicenseDetail(${l.id})">
+    return `<div class="exp-item" onclick="clickLicense(${l.id})">
       ${badge}
       <span class="exp-name"><strong>${l.state}</strong> - ${l.licenseNumber}</span>
       <span class="exp-location">${l.location}</span>
@@ -1995,7 +1995,7 @@ function renderExpirationCalendar() {
     items.forEach(l => {
       const days = daysUntilExp(l.expirationDate);
       const cls = days <= 30 ? 'badge-urgent' : days <= 90 ? 'badge-warning' : 'badge-soon';
-      html += `<div class="exp-item" onclick="openLicenseDetail(${l.id})">
+      html += `<div class="exp-item" onclick="clickLicense(${l.id})">
         <span class="exp-date">${formatDate(l.expirationDate)}</span>
         <span class="exp-name">${l.state}</span>
         <span class="exp-location">${l.location}</span>
@@ -2181,7 +2181,7 @@ function openLocationDetail(loc) {
     const days = daysUntilExp(l.expirationDate);
     const hasFile = l.licenseCopyUrl || l.licenseCopy;
     html += `<tr>
-      <td style="cursor:pointer" onclick="closeModal('locationDetailModal');openLicenseDetail('${l.id}')">${l.state}</td>
+      <td style="cursor:pointer" onclick="closeModal('locationDetailModal');clickLicense('${l.id}')">${l.state}</td>
       <td>${l.licenseNumber}</td>
       <td><span class="badge badge-${l.type.toLowerCase().replace(/\s+/g,'-')}">${l.type}</span></td>
       <td>${formatDate(l.expirationDate) || 'N/A'}</td>
@@ -2268,7 +2268,7 @@ function renderLicenseTable() {
 
   const html = filtered.map(l => {
     const days = daysUntilExp(l.expirationDate);
-    return `<tr onclick="openLicenseDetail(${l.id})">
+    return `<tr onclick="clickLicense(${l.id})">
       <td>${l.location}</td>
       <td><strong>${l.state}</strong></td>
       <td>${l.licenseNumber}</td>
@@ -2291,6 +2291,16 @@ function sortLicenses(field) {
 }
 
 // ===== LICENSE DETAIL =====
+function clickLicense(id) {
+  const l = licenses.find(x => x.id === id);
+  if (!l) return;
+  if (canEdit() || canEditLocation(l.location)) {
+    openEditLicense(id);
+  } else {
+    openLicenseDetail(id);
+  }
+}
+
 function openLicenseDetail(id) {
   const l = licenses.find(x => x.id === id);
   if (!l) return;
