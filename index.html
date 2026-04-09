@@ -1514,6 +1514,34 @@ function migrateLocationName(loc) {
   return LOCATION_NAME_MIGRATIONS[loc] || loc;
 }
 
+function parseLocationsList(str) {
+  if (!str) return [];
+  // New format uses | separator
+  if (str.includes('|')) {
+    return str.split('|').map(s => migrateLocationName(s.trim())).filter(Boolean);
+  }
+  // Old format used commas — but location names also contain commas (e.g., "Erie, PA")
+  // Match against known locations
+  const found = [];
+  let remaining = str;
+  // Sort locations longest-first to match greedily
+  const sortedLocs = [...LOCATIONS].sort((a, b) => b.length - a.length);
+  for (const loc of sortedLocs) {
+    if (remaining.includes(loc)) {
+      found.push(loc);
+      remaining = remaining.replace(loc, '');
+    }
+  }
+  // Also check migrated names
+  for (const [oldName, newName] of Object.entries(LOCATION_NAME_MIGRATIONS)) {
+    if (remaining.includes(oldName)) {
+      found.push(newName);
+      remaining = remaining.replace(oldName, '');
+    }
+  }
+  return found.length > 0 ? found : str.split('|').map(s => s.trim()).filter(Boolean);
+}
+
 function migrateHolderNames() {
   // One-time migration: convert short location names to "DBA - City, ST" format
   const holderMap = {};
@@ -3461,14 +3489,14 @@ async function loadUserRoles() {
       email: email,
       displayName: name,
       role: f.Role || ROLES.LOCATION_MANAGER,
-      locations: (f.Locations || '').split(',').map(s => s.trim()).filter(Boolean).map(migrateLocationName),
+      locations: parseLocationsList(f.Locations || ''),
       adOfficeLocation: office
     };
   });
   // Update SP records if location names were migrated
   for (const u of userRoles) {
     const rawLocs = (items.find(i => i.id === u.spItemId)?.fields?.Locations || '');
-    const migratedLocs = u.locations.join(', ');
+    const migratedLocs = u.locations.join(' | ');
     if (rawLocs && migratedLocs !== rawLocs && u.spItemId) {
       spUpdateItem(SP_LIST_USERS, u.spItemId, { Locations: migratedLocs });
     }
@@ -3536,8 +3564,12 @@ async function resolveUserRole() {
         userLocations = [...LOCATIONS]; // can view all
       } else {
         isAdmin = false;
-        userLocations = userRecord.locations.length > 0 ? userRecord.locations : [...LOCATIONS];
+        // Migrate any old location names in the user's assigned locations
+        userLocations = userRecord.locations.length > 0
+          ? userRecord.locations.map(migrateLocationName)
+          : [...LOCATIONS];
       }
+      console.log('Resolved role:', userRole, 'Locations:', userLocations);
       return;
     }
   }
@@ -3853,7 +3885,7 @@ async function saveUser(e) {
     Email: email,
     DisplayName: displayName,
     Role: role,
-    Locations: role === ROLES.LOCATION_MANAGER ? selectedLocs.join(', ') : '',
+    Locations: role === ROLES.LOCATION_MANAGER ? selectedLocs.join(' | ') : '',
     ADOfficeLocation: adOffice
   };
   console.log('Saving user fields:', JSON.stringify(fields));
