@@ -795,8 +795,12 @@
             <select id="lic_location" required></select>
           </div>
           <div class="form-group">
-            <label>State / Name *</label>
-            <input type="text" id="lic_state" required placeholder="e.g., Alabama, DEA License">
+            <label>License Name *</label>
+            <input type="text" id="lic_state" required placeholder="e.g., Pharmacy, DEA, Eli Injectables">
+          </div>
+          <div class="form-group">
+            <label>State</label>
+            <input type="text" id="lic_licenseState" placeholder="e.g., PA, FL, NY">
           </div>
           <div class="form-group">
             <label>License Number</label>
@@ -1514,6 +1518,11 @@ function migrateLocationName(loc) {
   return LOCATION_NAME_MIGRATIONS[loc] || loc;
 }
 
+function licDisplayName(l) {
+  if (l.licenseState) return l.state + ' (' + l.licenseState + ')';
+  return l.state;
+}
+
 function parseLocationsList(str) {
   if (!str) return [];
   // New format uses | separator
@@ -1543,28 +1552,8 @@ function parseLocationsList(str) {
 }
 
 function migrateHolderNames() {
-  // One-time migration: convert short location names to "DBA - City, ST" format
-  const holderMap = {};
-  LOCATIONS.forEach(loc => {
-    const info = LOCATION_INFO[loc] || {};
-    const dba = info.dba || loc;
-    const fullName = dba + ' - ' + loc;
-    // Map the short name (e.g. "Erie") to full format
-    const shortName = loc.split(',')[0].trim();
-    holderMap[shortName.toLowerCase()] = fullName;
-    holderMap[loc.toLowerCase()] = fullName;
-  });
-
-  let changed = false;
-  licenses.forEach(l => {
-    if (!l.licenseHolder) return;
-    const key = l.licenseHolder.trim().toLowerCase();
-    if (holderMap[key] && l.licenseHolder !== holderMap[key]) {
-      l.licenseHolder = holderMap[key];
-      changed = true;
-    }
-  });
-  if (changed) saveLocalCache();
+  // Migration disabled — holder names have been manually corrected
+  // Keeping function to avoid breaking callers
 }
 
 function saveLocalCache() {
@@ -1630,6 +1619,7 @@ async function spCreateLists() {
     { displayName: SP_LIST_LICENSES, columns: [
       { name: 'Location', text: {} },
       { name: 'StateName', text: {} },
+      { name: 'LicenseStateName', text: {} },
       { name: 'LicenseNumber', text: {} },
       { name: 'LicenseType', text: {} },
       { name: 'ExpirationDate', text: {} },
@@ -1826,6 +1816,7 @@ function licenseToSpFields(l) {
     Title: (l.state || '').substring(0, 255),
     Location: l.location || '',
     StateName: l.state || '',
+    LicenseStateName: l.licenseState || '',
     LicenseNumber: l.licenseNumber || '',
     LicenseType: l.type || '',
     ExpirationDate: l.expirationDate || '',
@@ -1857,6 +1848,7 @@ function spFieldsToLicense(item) {
     spItemId: item.id,
     location: f.Location || '',
     state: f.StateName || f.Title || '',
+    licenseState: f.LicenseStateName || '',
     licenseNumber: f.LicenseNumber || '',
     type: f.LicenseType || 'Pharmacy',
     expirationDate: f.ExpirationDate || '',
@@ -2343,7 +2335,7 @@ function renderDashboard() {
                   '<span class="badge badge-urgent">ASAP</span>';
     return `<div class="exp-item" onclick="clickLicense(${l.id})">
       ${badge}
-      <span class="exp-name"><strong>${l.state}</strong> - ${l.licenseNumber}</span>
+      <span class="exp-name"><strong>${licDisplayName(l)}</strong> - ${l.licenseNumber}</span>
       <span class="exp-location">${l.location}</span>
     </div>`;
   }).join('');
@@ -2537,7 +2529,7 @@ function openLocationDetail(loc) {
       const days = daysUntilExp(l.expirationDate);
       const hasFile = l.licenseCopyUrl || l.licenseCopy;
       html += `<tr>
-        <td style="cursor:pointer" onclick="closeModal('locationDetailModal');clickLicense('${l.id}')"><strong>${l.state}</strong></td>
+        <td style="cursor:pointer" onclick="closeModal('locationDetailModal');clickLicense('${l.id}')"><strong>${licDisplayName(l)}</strong></td>
         <td><code>${l.licenseNumber}</code></td>
         <td>${formatDate(l.expirationDate) || 'N/A'} ${urgencyBadge(days, l.expirationDate)}</td>
         <td>${statusBadge(l.renewalStatus) || '<span class="status-badge status-current">Current</span>'}</td>
@@ -2595,7 +2587,7 @@ function openLocationDetail(loc) {
     const days = daysUntilExp(l.expirationDate);
     const hasFile = l.licenseCopyUrl || l.licenseCopy;
     html += `<tr>
-      <td style="cursor:pointer" onclick="closeModal('locationDetailModal');clickLicense('${l.id}')">${l.state}</td>
+      <td style="cursor:pointer" onclick="closeModal('locationDetailModal');clickLicense('${l.id}')">${licDisplayName(l)}</td>
       <td>${l.licenseNumber}</td>
       <td><span class="badge badge-${l.type.toLowerCase().replace(/\s+/g,'-')}">${l.type}</span></td>
       <td>${formatDate(l.expirationDate) || 'N/A'}</td>
@@ -2662,7 +2654,7 @@ function renderLicenseTable() {
     if (!canViewLocation(l.location)) return false;
     if (archFilter === 'active' && l.archived) return false;
     if (archFilter === 'archived' && !l.archived) return false;
-    if (search && !(l.state+l.licenseNumber+l.location+l.licenseHolder+l.notes).toLowerCase().includes(search)) return false;
+    if (search && !(l.state+l.licenseState+l.licenseNumber+l.location+l.licenseHolder+l.notes).toLowerCase().includes(search)) return false;
     if (locFilter && l.location !== locFilter) return false;
     if (typeFilter && l.type !== typeFilter) return false;
     if (statFilter && l.renewalStatus !== statFilter) return false;
@@ -2690,7 +2682,7 @@ function renderLicenseTable() {
     const restoreBtn = l.archived && canEdit() ? `<button class="btn btn-sm btn-secondary" onclick="event.stopPropagation();unarchiveLicense('${l.id}')">Restore</button>` : '';
     return `<tr onclick="clickLicense(${l.id})" style="${archivedStyle}">
       <td>${l.location}</td>
-      <td><strong>${l.state}</strong>${l.archived ? ' <span class="badge" style="background:var(--gray-300);color:#fff;font-size:10px">Archived</span>' : ''}</td>
+      <td><strong>${licDisplayName(l)}</strong>${l.archived ? ' <span class="badge" style="background:var(--gray-300);color:#fff;font-size:10px">Archived</span>' : ''}</td>
       <td>${l.licenseNumber}</td>
       <td><span class="badge badge-${l.type.toLowerCase().replace(/\s+/g,'-')}">${l.type}</span></td>
       <td>${formatDate(l.expirationDate) || 'N/A'}</td>
@@ -2728,12 +2720,13 @@ function openLicenseDetail(id) {
   const l = licenses.find(x => String(x.id) === String(id));
   if (!l) return;
   currentLicenseId = id;
-  document.getElementById('licDetailTitle').textContent = l.state + ' - ' + l.location;
+  document.getElementById('licDetailTitle').textContent = licDisplayName(l) + ' - ' + l.location;
 
   const days = daysUntilExp(l.expirationDate);
   let html = '<div class="detail-grid">';
   html += detailRow('Location', l.location);
-  html += detailRow('State / Name', l.state);
+  html += detailRow('License Name', l.state);
+  if (l.licenseState) html += detailRow('State', l.licenseState);
   html += detailRow('License Number', l.licenseNumber || 'N/A');
   html += detailRow('Type', `<span class="badge badge-${l.type.toLowerCase().replace(/\s+/g,'-')}">${l.type}</span>`);
   html += detailRow('Expiration', (formatDate(l.expirationDate) || 'N/A') + ' ' + urgencyBadge(days, l.expirationDate));
@@ -2886,6 +2879,7 @@ function openEditLicense(id) {
   document.getElementById('lic_editId').value = l.id;
   document.getElementById('lic_location').value = l.location;
   document.getElementById('lic_state').value = l.state;
+  document.getElementById('lic_licenseState').value = l.licenseState || '';
   document.getElementById('lic_number').value = l.licenseNumber;
   document.getElementById('lic_type').value = l.type;
   document.getElementById('lic_expiration').value = l.expirationDate;
@@ -2966,6 +2960,7 @@ async function saveLicense(e) {
   const data = {
     location: document.getElementById('lic_location').value,
     state: document.getElementById('lic_state').value,
+    licenseState: document.getElementById('lic_licenseState').value,
     licenseNumber: document.getElementById('lic_number').value,
     type: document.getElementById('lic_type').value,
     expirationDate: document.getElementById('lic_expiration').value,
@@ -4184,7 +4179,7 @@ function renderDocLicenseResults() {
   if (!q || q.length < 1) { container.style.display = 'none'; return; }
 
   let filtered = licenses.filter(l => !l.archived &&
-    (l.state + ' ' + l.licenseNumber + ' ' + l.location + ' ' + (l.licenseHolder || '') + ' ' + l.type).toLowerCase().includes(q)
+    (l.state + ' ' + (l.licenseState||'') + ' ' + l.licenseNumber + ' ' + l.location + ' ' + (l.licenseHolder || '') + ' ' + l.type).toLowerCase().includes(q)
   );
   if (locFilter) filtered = filtered.filter(l => l.location === locFilter);
   filtered = filtered.slice(0, 15);
@@ -4198,7 +4193,7 @@ function renderDocLicenseResults() {
   container.innerHTML = filtered.map(l => {
     const days = daysUntilExp(l.expirationDate);
     return `<div style="padding:8px 12px;cursor:pointer;border-bottom:1px solid var(--gray-100);font-size:13px;transition:background .1s" onmouseover="this.style.background='var(--gray-50)'" onmouseout="this.style.background=''" onclick="selectDocLicense('${l.id}')">
-      <strong>${escHtml(l.state)}</strong> <span style="color:var(--gray-400)">— ${escHtml(l.location)}</span>
+      <strong>${escHtml(licDisplayName(l))}</strong> <span style="color:var(--gray-400)">— ${escHtml(l.location)}</span>
       <div style="font-size:11px;color:var(--gray-500)">${l.licenseNumber || 'No #'} &middot; ${l.type} ${l.expirationDate ? '&middot; Exp: ' + formatDate(l.expirationDate) : ''}</div>
     </div>`;
   }).join('');
@@ -4612,7 +4607,7 @@ function renderDocSearchResults() {
   let filtered = licenses.filter(l => !l.archived && canViewLocation(l.location));
   if (q) {
     filtered = filtered.filter(l =>
-      (l.state + ' ' + l.licenseNumber + ' ' + l.location + ' ' + (l.licenseHolder || '') + ' ' + l.type).toLowerCase().includes(q)
+      (l.state + ' ' + (l.licenseState||'') + ' ' + l.licenseNumber + ' ' + l.location + ' ' + (l.licenseHolder || '') + ' ' + l.type).toLowerCase().includes(q)
     );
   }
   filtered.sort((a, b) => a.state.localeCompare(b.state));
