@@ -135,6 +135,7 @@
   .badge-sterile { background: #ccfbf1; color: #0f766e; }
   .badge-hemp { background: #ecfccb; color: #3f6212; }
   .badge-pseudoephedrine { background: #fef9c3; color: #854d0e; }
+  .badge-certificate { background: #e0f2fe; color: #0369a1; }
   .badge-other { background: var(--gray-100); color: var(--gray-600); }
 
   .status-badge { padding: 3px 10px; border-radius: 12px; font-size: 12px; font-weight: 500; }
@@ -399,6 +400,7 @@
             <option value="Sterile Compounding">Sterile Compounding</option>
             <option value="Hemp">Hemp</option>
             <option value="Pseudoephedrine">Pseudoephedrine (PSE)</option>
+            <option value="Certificate">Certificate</option>
             <option value="Other">Other</option>
           </select>
           <select class="filter-select" id="urgencyFilter" onchange="renderLicenseTable()">
@@ -811,6 +813,7 @@
               <option value="Hemp">Hemp</option>
               <option value="Pseudoephedrine">Pseudoephedrine (PSE)</option>
               <option value="Technician">Technician</option>
+              <option value="Certificate">Certificate</option>
               <option value="Medicaid">Medicaid</option>
               <option value="Business">Business</option>
               <option value="Other">Other</option>
@@ -2102,6 +2105,7 @@ function detectLicenseType(stateName) {
   if (s.includes('hemp') || s.includes('cbd')) return 'Hemp';
   if (s.includes('pseudoephedrine') || s.includes('pse') || s.includes('nplex') || s.includes('meth')) return 'Pseudoephedrine';
   if (s.includes('medicaid') || s.includes('tmhp') || s.includes('cms')) return 'Medicaid';
+  if (s.includes('certificate') || s.includes('certification') || s.includes('certified') || s.includes('cpr') || s.includes('immuniz') || s.includes('vaccin') || s.includes('acpe') || s.includes('bls') || s.includes('acls')) return 'Certificate';
   if (s.includes('injectable')) return 'Pharmacist';
   if (s.includes('alarm') || s.includes('business') || s.includes('nabp') || s.includes('ncpdp') || s.includes('ein') || s.includes('npi') || s.includes('secretary') || s.includes('health commerce')) return 'Other';
   return 'Pharmacy';
@@ -2391,7 +2395,7 @@ function renderLocationsGrid() {
 
     // Break down by category
     const keyTypes = ['Pharmacy','DEA','Controlled Substance','Sterile Compounding','Hemp','Pseudoephedrine'];
-    const personalTypes = ['Pharmacist','Technician'];
+    const personalTypes = ['Pharmacist','Technician','Certificate'];
     const keyCount = locLics.filter(l => keyTypes.includes(l.type) || (l.state && l.state.match(/^(DEA|NPI|NABP)/))).length;
     const personalCount = locLics.filter(l => personalTypes.includes(l.type)).length;
     const otherCount = locLics.length - keyCount - personalCount;
@@ -2508,8 +2512,8 @@ function openLocationDetail(loc) {
   // Personnel at this location
   const locPersonnel = [];
   const seen = new Set();
-  locLics.filter(l => l.type === 'Pharmacist' || l.type === 'Technician').forEach(l => {
-    const name = l.licenseHolder || l.state.replace(/ - Pharmacist| - Technician/i,'').replace(/^.*? - /,'');
+  locLics.filter(l => l.type === 'Pharmacist' || l.type === 'Technician' || l.type === 'Certificate').forEach(l => {
+    const name = l.licenseHolder || l.state.replace(/ - Pharmacist| - Technician| - Certificate/i,'').replace(/^.*? - /,'');
     const key = name.toLowerCase();
     if (!seen.has(key) && name.length > 2) {
       seen.add(key);
@@ -3027,6 +3031,7 @@ function renderPersonnelTable() {
     personnelMap[key].licenses.push(l);
     personnelMap[key].locations.add(l.location);
     if (l.type === 'Technician') personnelMap[key].role = 'Technician';
+    if (l.type === 'Certificate' && personnelMap[key].role !== 'Pharmacist' && personnelMap[key].role !== 'Technician') personnelMap[key].role = 'Certificate Holder';
   });
 
   let personnel = Object.values(personnelMap);
