@@ -190,6 +190,12 @@
   .doc-search-item .item-name { font-weight: 600; font-size: 14px; color: var(--gray-800); }
   .doc-search-item .item-meta { font-size: 12px; color: var(--gray-500); margin-top: 2px; }
   .doc-search-item .item-actions { display: flex; gap: 6px; flex-shrink: 0; margin-left: 12px; }
+
+  /* Requirement status colors */
+  .req-status-select option[value="Not Started"] { background: #9ca3af; color: white; }
+  .req-status-select option[value="In Progress"] { background: #f59e0b; color: white; }
+  .req-status-select option[value="Complete"] { background: #10b981; color: white; }
+  .req-status-select option[value="N/A"] { background: #d1d5db; color: white; }
   .modal-header { padding: 20px 24px; border-bottom: 1px solid var(--gray-200); display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; background: white; z-index: 1; border-radius: 12px 12px 0 0; }
   .modal-header h2 { font-size: 18px; color: var(--primary-dark); }
   .modal-body { padding: 24px; }
@@ -879,6 +885,27 @@
                 <input type="text" id="lic_renewalDocNotes" placeholder="Label (e.g. 2024 Renewal Application, DEA Form 224)">
               </div>
               <button type="button" class="btn btn-sm btn-primary" onclick="addRenewalDoc()">Add</button>
+            </div>
+          </div>
+          <div class="form-group full-width">
+            <label>Requirements <span style="font-weight:400;color:var(--gray-400)">(renewal, prerequisites, compliance, documents)</span></label>
+            <div id="lic_requirementsPreview" style="margin-bottom:8px"></div>
+            <div style="display:flex;gap:8px;align-items:end;flex-wrap:wrap">
+              <div style="flex:0 0 140px">
+                <select id="lic_reqType" style="width:100%;padding:6px 8px;border:1px solid var(--gray-300);border-radius:var(--radius);font-size:13px">
+                  <option value="Renewal">Renewal</option>
+                  <option value="Prerequisite">Prerequisite</option>
+                  <option value="Compliance">Compliance</option>
+                  <option value="Document">Document</option>
+                </select>
+              </div>
+              <div style="flex:1;min-width:150px">
+                <input type="text" id="lic_reqDesc" placeholder="Requirement description (e.g. 30 CEU hours, Surety Bond, Base Pharmacy License)">
+              </div>
+              <div style="flex:0 0 120px">
+                <input type="date" id="lic_reqDue" title="Due date (optional)">
+              </div>
+              <button type="button" class="btn btn-sm btn-primary" onclick="addRequirement()">Add</button>
             </div>
           </div>
           <div class="form-group full-width">
@@ -1576,7 +1603,8 @@ async function spCreateLists() {
       { name: 'LicenseCopyUrl', text: {} },
       { name: 'LicenseCopyName', text: {} },
       { name: 'LicenseCopyDate', text: {} },
-      { name: 'RenewalDocs', text: {} }
+      { name: 'RenewalDocs', text: {} },
+      { name: 'Requirements', text: {} }
     ]},
     { displayName: SP_LIST_INSPECTIONS, columns: [
       { name: 'Location', text: {} },
@@ -1751,7 +1779,8 @@ function licenseToSpFields(l) {
     LicenseCopyUrl: l.licenseCopyUrl || '',
     LicenseCopyName: l.licenseCopyName || '',
     LicenseCopyDate: l.licenseCopyDate || '',
-    RenewalDocs: JSON.stringify(l.renewalDocs || [])
+    RenewalDocs: JSON.stringify(l.renewalDocs || []),
+    Requirements: JSON.stringify(l.requirements || [])
   };
 }
 
@@ -1781,7 +1810,8 @@ function spFieldsToLicense(item) {
     licenseCopyUrl: f.LicenseCopyUrl || '',
     licenseCopyName: f.LicenseCopyName || '',
     licenseCopyDate: f.LicenseCopyDate || '',
-    renewalDocs: f.RenewalDocs ? JSON.parse(f.RenewalDocs) : []
+    renewalDocs: f.RenewalDocs ? JSON.parse(f.RenewalDocs) : [],
+    requirements: f.Requirements ? JSON.parse(f.Requirements) : []
   };
 }
 
@@ -2032,6 +2062,7 @@ function importSeedData() {
         renewalStatus: item.rs || '',
         renewalInstructions: '',
         renewalDocs: [],
+        requirements: [],
         type: detectLicenseType(item.s),
         inspectionAccepted: ''
       });
@@ -2699,6 +2730,35 @@ function openLicenseDetail(id) {
     html += '</div>';
   }
 
+  // Requirements
+  if (l.requirements && l.requirements.length) {
+    html += '<div class="detail-section"><h3>Requirements</h3>';
+    const reqTypes = ['Renewal','Prerequisite','Compliance','Document'];
+    reqTypes.forEach(type => {
+      const typeReqs = l.requirements.filter(r => r.type === type);
+      if (!typeReqs.length) return;
+      const typeIcon = type === 'Renewal' ? '🔄' : type === 'Prerequisite' ? '🔗' : type === 'Compliance' ? '✅' : '📋';
+      html += `<div style="margin-bottom:10px"><div style="font-size:13px;font-weight:600;color:var(--gray-600);margin-bottom:4px">${typeIcon} ${type}</div>`;
+      typeReqs.forEach((r, idx) => {
+        const globalIdx = l.requirements.indexOf(r);
+        const statusColors = { 'Not Started': 'var(--gray-400)', 'In Progress': 'var(--warning)', 'Complete': 'var(--success)', 'N/A': 'var(--gray-300)' };
+        const statusColor = statusColors[r.status] || 'var(--gray-400)';
+        html += `<div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:var(--gray-50);border-radius:var(--radius);border:1px solid var(--gray-200);margin-bottom:3px;font-size:13px">
+          <span style="width:10px;height:10px;border-radius:50%;background:${statusColor};flex-shrink:0"></span>
+          <span style="flex:1;${r.status === 'Complete' ? 'text-decoration:line-through;color:var(--gray-400)' : ''}">${escHtml(r.description)}</span>
+          ${r.dueDate ? '<span style="font-size:11px;color:var(--gray-500)">Due: '+formatDate(r.dueDate)+'</span>' : ''}
+          <span style="font-size:11px;padding:2px 6px;border-radius:4px;background:${statusColor};color:white">${r.status}</span>
+        </div>`;
+      });
+      html += '</div>';
+    });
+    // Summary
+    const total = l.requirements.length;
+    const complete = l.requirements.filter(r => r.status === 'Complete' || r.status === 'N/A').length;
+    html += `<div style="font-size:12px;color:var(--gray-500);margin-top:4px">${complete} of ${total} requirements complete</div>`;
+    html += '</div>';
+  }
+
   if (l.notes) {
     html += `<div class="detail-section"><h3>Notes</h3><p style="font-size:14px;color:var(--gray-700)">${escHtml(l.notes)}</p></div>`;
   }
@@ -2739,6 +2799,7 @@ function openAddLicense() {
   document.getElementById('lic_editId').value = '';
   document.getElementById('lic_currentFilePreview').innerHTML = '';
   document.getElementById('lic_renewalDocsPreview').innerHTML = '';
+  document.getElementById('lic_requirementsPreview').innerHTML = '';
   document.getElementById('licFormDangerBtns').style.display = 'none';
   populateLicLocationSelect();
   openModal('licenseFormModal');
@@ -2767,6 +2828,7 @@ function openEditLicense(id) {
   document.getElementById('lic_notes').value = l.notes;
   document.getElementById('lic_renewalInstructions').value = l.renewalInstructions || '';
   renderRenewalDocsPreview(l);
+  renderRequirementsPreview(l);
   // Show existing file preview if there's a license copy
   const preview = document.getElementById('lic_currentFilePreview');
   if (l.licenseCopy) {
@@ -2906,9 +2968,11 @@ async function saveLicense(e) {
         data.licenseCopyName = existing.licenseCopyName;
         data.licenseCopyDate = existing.licenseCopyDate;
         data.renewalDocs = existing.renewalDocs || [];
+        data.requirements = existing.requirements || [];
       }
     }
     if (!data.renewalDocs) data.renewalDocs = [];
+    if (!data.requirements) data.requirements = [];
     finishSave(data, editId);
   }
 }
@@ -3843,6 +3907,91 @@ function devBypass() {
   renderAll();
   renderUserTable();
   updateSpStatus();
+}
+
+// ===== LICENSE REQUIREMENTS =====
+function renderRequirementsPreview(lic) {
+  const container = document.getElementById('lic_requirementsPreview');
+  if (!lic || !lic.requirements || !lic.requirements.length) {
+    container.innerHTML = '<div style="font-size:12px;color:var(--gray-400);padding:4px 0">No requirements added yet</div>';
+    return;
+  }
+  const typeIcons = { Renewal: '🔄', Prerequisite: '🔗', Compliance: '✅', Document: '📋' };
+  const statusColors = { 'Not Started': '#9ca3af', 'In Progress': '#f59e0b', 'Complete': '#10b981', 'N/A': '#d1d5db' };
+  container.innerHTML = lic.requirements.map((r, idx) => {
+    return `<div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:var(--gray-50);border-radius:var(--radius);border:1px solid var(--gray-200);margin-bottom:3px;font-size:13px">
+      <span>${typeIcons[r.type] || '📋'}</span>
+      <span style="font-size:11px;color:var(--gray-500);min-width:70px">${r.type}</span>
+      <strong style="flex:1;min-width:0">${escHtml(r.description)}</strong>
+      ${r.dueDate ? '<span style="font-size:11px;color:var(--gray-400)">Due: '+formatDate(r.dueDate)+'</span>' : ''}
+      <select onchange="updateReqStatus(${idx}, this.value)" style="font-size:11px;padding:2px 4px;border:1px solid var(--gray-300);border-radius:4px;background:${statusColors[r.status] || '#9ca3af'};color:white;cursor:pointer">
+        <option value="Not Started" ${r.status === 'Not Started' ? 'selected' : ''}>Not Started</option>
+        <option value="In Progress" ${r.status === 'In Progress' ? 'selected' : ''}>In Progress</option>
+        <option value="Complete" ${r.status === 'Complete' ? 'selected' : ''}>Complete</option>
+        <option value="N/A" ${r.status === 'N/A' ? 'selected' : ''}>N/A</option>
+      </select>
+      <button type="button" style="font-size:11px;color:var(--danger);background:none;border:none;padding:2px 6px;cursor:pointer" onclick="removeRequirement(${idx})">Remove</button>
+    </div>`;
+  }).join('');
+}
+
+function addRequirement() {
+  const editId = document.getElementById('lic_editId').value;
+  const desc = document.getElementById('lic_reqDesc').value.trim();
+  const type = document.getElementById('lic_reqType').value;
+  const dueDate = document.getElementById('lic_reqDue').value;
+
+  if (!desc) { showToast('Enter a requirement description', 'error'); return; }
+
+  let lic;
+  if (editId) {
+    lic = licenses.find(l => String(l.id) === String(editId));
+  }
+  if (!lic) {
+    showToast('Save the license first, then edit it to add requirements', 'info');
+    return;
+  }
+  if (!lic.requirements) lic.requirements = [];
+
+  lic.requirements.push({
+    type: type,
+    description: desc,
+    status: 'Not Started',
+    dueDate: dueDate || '',
+    addedDate: new Date().toISOString().split('T')[0]
+  });
+
+  spSaveLicense(lic);
+  saveLocalCache();
+  renderRequirementsPreview(lic);
+  document.getElementById('lic_reqDesc').value = '';
+  document.getElementById('lic_reqDue').value = '';
+  showToast('Requirement added', 'success');
+}
+
+function updateReqStatus(idx, status) {
+  const editId = document.getElementById('lic_editId').value;
+  if (!editId) return;
+  const lic = licenses.find(l => String(l.id) === String(editId));
+  if (!lic || !lic.requirements || !lic.requirements[idx]) return;
+  lic.requirements[idx].status = status;
+  spSaveLicense(lic);
+  saveLocalCache();
+  renderRequirementsPreview(lic);
+}
+
+function removeRequirement(idx) {
+  const editId = document.getElementById('lic_editId').value;
+  if (!editId) return;
+  const lic = licenses.find(l => String(l.id) === String(editId));
+  if (!lic || !lic.requirements) return;
+  const req = lic.requirements[idx];
+  if (!confirm('Remove requirement "' + req.description + '"?')) return;
+  lic.requirements.splice(idx, 1);
+  spSaveLicense(lic);
+  saveLocalCache();
+  renderRequirementsPreview(lic);
+  showToast('Requirement removed', 'success');
 }
 
 // ===== LICENSE HOLDER LOOKUP =====
