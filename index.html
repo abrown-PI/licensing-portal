@@ -90,7 +90,7 @@
   .stat-card.purple { border-top-color: var(--accent); } .stat-card.purple .stat-value { color: var(--accent); }
 
   /* Location Cards */
-  .locations-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; }
+  .locations-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
   .location-card { background: white; border-radius: var(--radius); border: 1px solid var(--gray-200); box-shadow: var(--shadow); overflow: hidden; cursor: pointer; transition: all .2s; }
   .location-card:hover { box-shadow: var(--shadow-md); transform: translateY(-2px); }
   .location-card-header { padding: 16px 20px; background: linear-gradient(135deg, var(--primary-darker), var(--primary-dark)); color: white; }
@@ -249,7 +249,7 @@
     .nav-tabs { overflow-x: auto; }
     .container { padding: 16px; }
     .stats-grid { grid-template-columns: repeat(2, 1fr); }
-    .locations-grid { grid-template-columns: 1fr; }
+    .locations-grid { grid-template-columns: 1fr !important; }
     .detail-grid { grid-template-columns: 1fr; }
   }
 </style>
@@ -269,7 +269,6 @@
     <button class="nav-tab" data-page="personnel">Personnel</button>
     <button class="nav-tab" data-page="inspections">Inspections</button>
     <button class="nav-tab" data-page="documents">Documents</button>
-    <button class="nav-tab admin-only-tab" data-page="locationMgmt" style="display:none">Manage Locations</button>
     <button class="nav-tab admin-only-tab" data-page="users" style="display:none">User Management</button>
   </div>
   <div class="nav-actions">
@@ -333,6 +332,9 @@
 
   <!-- LOCATIONS PAGE -->
   <div class="page" id="page-locations">
+    <div style="display:flex;justify-content:flex-end;margin-bottom:12px">
+      <button class="btn btn-sm btn-primary admin-edit-btn" onclick="openAddLocation()">+ Add Location</button>
+    </div>
     <div class="locations-grid" id="locationsGrid"></div>
   </div>
 
@@ -431,6 +433,7 @@
                 <th>Licenses</th>
                 <th>Next Expiring</th>
                 <th>Status</th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody id="personnelTableBody"></tbody>
@@ -942,7 +945,10 @@
   <div class="modal" style="max-width: 1000px;">
     <div class="modal-header">
       <h2 id="locDetailTitle">Location Details</h2>
-      <button class="modal-close" onclick="closeModal('locationDetailModal')">&times;</button>
+      <div style="display:flex;gap:8px;align-items:center">
+        <button class="btn btn-sm btn-secondary admin-edit-btn" id="editLocBtn" onclick="editLocationFromDetail()">Edit Location</button>
+        <button class="modal-close" onclick="closeModal('locationDetailModal')">&times;</button>
+      </div>
     </div>
     <div class="modal-body" id="locDetailBody"></div>
   </div>
@@ -2198,7 +2204,17 @@ function renderLocationsGrid() {
   document.getElementById('locationsGrid').innerHTML = html;
 }
 
+let currentLocationKey = null;
+
+function editLocationFromDetail() {
+  if (currentLocationKey) {
+    closeModal('locationDetailModal');
+    openEditLocation(currentLocationKey);
+  }
+}
+
 function openLocationDetail(loc) {
+  currentLocationKey = loc;
   const info = LOCATION_INFO[loc] || {};
   const canUploadHere = canUpload(loc);
   const canEditHere = canEditLocation(loc);
@@ -2247,7 +2263,7 @@ function openLocationDetail(loc) {
       const days = daysUntilExp(l.expirationDate);
       const hasFile = l.licenseCopyUrl || l.licenseCopy;
       html += `<tr>
-        <td><strong>${l.state}</strong></td>
+        <td style="cursor:pointer" onclick="closeModal('locationDetailModal');clickLicense('${l.id}')"><strong>${l.state}</strong></td>
         <td><code>${l.licenseNumber}</code></td>
         <td>${formatDate(l.expirationDate) || 'N/A'} ${urgencyBadge(days, l.expirationDate)}</td>
         <td>${statusBadge(l.renewalStatus) || '<span class="status-badge status-current">Current</span>'}</td>
@@ -2283,15 +2299,23 @@ function openLocationDetail(loc) {
   });
   if (locPersonnel.length) {
     html += '<div class="card"><div class="card-header"><h2>Personnel</h2></div><div class="card-body">';
-    html += '<table class="data-table"><thead><tr><th>Name</th><th>Role</th><th>License(s)</th><th>Next Expiration</th></tr></thead><tbody>';
+    html += '<table class="data-table"><thead><tr><th>Name</th><th>Role</th><th>License(s)</th><th>Next Expiration</th><th>Documents</th></tr></thead><tbody>';
     locPersonnel.forEach(p => {
       const nextExp = p.licenses.filter(l => l.expirationDate && daysUntilExp(l.expirationDate) >= 0)
         .sort((a,b) => new Date(a.expirationDate) - new Date(b.expirationDate))[0];
+      const uploadBtns = canUploadHere ? p.licenses.map(l => {
+        const hasFile = l.licenseCopyUrl || l.licenseCopy;
+        return '<label class="btn btn-sm btn-'+(hasFile ? 'secondary' : 'primary')+'" style="font-size:10px;cursor:pointer;margin:2px;padding:2px 6px" onclick="event.stopPropagation()">'
+          + escHtml(l.state.substring(0,15)) + ' ' + (hasFile ? '&#10003;' : '&#8593;')
+          + '<input type="file" accept=".pdf,.png,.jpg,.jpeg,.doc,.docx" style="display:none" onchange="quickUploadLicenseCopy(\''+l.id+'\', this)">'
+          + '</label>';
+      }).join('') : '';
       html += `<tr>
         <td><strong>${p.name}</strong></td>
         <td>${p.type}</td>
-        <td>${p.licenses.map(l => l.licenseNumber).join(', ')}</td>
+        <td>${p.licenses.map(l => '<span style="cursor:pointer;color:var(--primary)" onclick="closeModal(\'locationDetailModal\');clickLicense(\''+l.id+'\')">' + l.licenseNumber + '</span>').join(', ')}</td>
         <td>${nextExp ? formatDate(nextExp.expirationDate) + ' ' + urgencyBadge(daysUntilExp(nextExp.expirationDate), nextExp.expirationDate) : 'N/A'}</td>
+        <td>${uploadBtns}</td>
       </tr>`;
     });
     html += '</tbody></table></div></div>';
@@ -2723,17 +2747,26 @@ function renderPersonnelTable() {
     const nextExp = p.licenses.filter(l => l.expirationDate && daysUntilExp(l.expirationDate) >= 0)
       .sort((a,b) => new Date(a.expirationDate) - new Date(b.expirationDate))[0];
     const days = nextExp ? daysUntilExp(nextExp.expirationDate) : 999;
+    const licLinks = p.licenses.map(l => '<span style="cursor:pointer;color:var(--primary);font-size:12px" onclick="clickLicense(\''+l.id+'\')">' + escHtml(l.state.substring(0,20)) + '</span>').join(', ');
+    const uploadBtns = canEdit() ? p.licenses.map(l => {
+      const hasFile = l.licenseCopyUrl || l.licenseCopy;
+      return '<label class="btn btn-sm btn-'+(hasFile ? 'secondary' : 'primary')+'" style="font-size:10px;cursor:pointer;margin:2px;padding:2px 6px">'
+        + escHtml(l.state.substring(0,12)) + ' ' + (hasFile ? '&#10003;' : '&#8593;')
+        + '<input type="file" accept=".pdf,.png,.jpg,.jpeg,.doc,.docx" style="display:none" onchange="quickUploadLicenseCopy(\''+l.id+'\', this)">'
+        + '</label>';
+    }).join('') : '';
     return `<tr>
       <td><strong>${p.name}</strong></td>
       <td>${p.role}</td>
       <td>${[...p.locations].join(', ')}</td>
-      <td>${p.licenses.length}</td>
+      <td>${licLinks}</td>
       <td>${nextExp ? formatDate(nextExp.expirationDate) : 'N/A'}</td>
       <td>${urgencyBadge(days, nextExp ? nextExp.expirationDate : '')}</td>
+      <td style="white-space:nowrap">${uploadBtns}</td>
     </tr>`;
   }).join('');
 
-  document.getElementById('personnelTableBody').innerHTML = html || '<tr><td colspan="6" class="empty-state">No personnel found</td></tr>';
+  document.getElementById('personnelTableBody').innerHTML = html || '<tr><td colspan="7" class="empty-state">No personnel found</td></tr>';
 }
 
 // ===== INSPECTIONS =====
