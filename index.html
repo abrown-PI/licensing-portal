@@ -1013,8 +1013,14 @@
             </select>
           </div>
           <div class="form-group full-width">
-            <label>Related State / License</label>
-            <input type="text" id="doc_relatedState" placeholder="e.g., California, Mississippi">
+            <label>Related License *</label>
+            <div style="position:relative">
+              <input type="text" id="doc_licenseSearch" placeholder="Search by license name, number, or location..." oninput="renderDocLicenseResults()" onfocus="renderDocLicenseResults()" autocomplete="off" required>
+              <input type="hidden" id="doc_relatedLicenseId">
+              <input type="hidden" id="doc_relatedState">
+              <div id="doc_licenseSearchResults" style="display:none;position:absolute;top:100%;left:0;right:0;background:white;border:1px solid var(--gray-300);border-radius:var(--radius);max-height:200px;overflow-y:auto;z-index:10;box-shadow:var(--shadow-md)"></div>
+            </div>
+            <div id="doc_selectedLicense" style="margin-top:6px"></div>
           </div>
           <div class="form-group full-width">
             <label>File</label>
@@ -1560,6 +1566,7 @@ async function spCreateLists() {
       { name: 'Location', text: {} },
       { name: 'DocType', text: {} },
       { name: 'RelatedState', text: {} },
+      { name: 'RelatedLicenseId', text: {} },
       { name: 'Notes', text: { allowMultipleLines: true } },
       { name: 'UploadDate', text: {} },
       { name: 'FileUrl', text: {} },
@@ -1789,6 +1796,7 @@ function documentToSpFields(d) {
     Location: d.location || '',
     DocType: d.docType || '',
     RelatedState: d.relatedState || '',
+    RelatedLicenseId: d.relatedLicenseId || '',
     Notes: d.notes || '',
     UploadDate: d.uploadDate || '',
     FileUrl: d.fileUrl || '',
@@ -1805,6 +1813,7 @@ function spFieldsToDocument(item) {
     location: f.Location || '',
     docType: f.DocType || '',
     relatedState: f.RelatedState || '',
+    relatedLicenseId: f.RelatedLicenseId || '',
     notes: f.Notes || '',
     uploadDate: f.UploadDate || '',
     fileUrl: f.FileUrl || '',
@@ -2649,12 +2658,22 @@ function openLicenseDetail(id) {
     html += `<div class="detail-section"><h3>Notes</h3><p style="font-size:14px;color:var(--gray-700)">${escHtml(l.notes)}</p></div>`;
   }
 
-  // Related documents
-  const relDocs = documents.filter(d => d.relatedState && l.state.toLowerCase().includes(d.relatedState.toLowerCase()));
+  // Related documents (match by relatedLicenseId or fallback to relatedState text match)
+  const relDocs = documents.filter(d =>
+    (d.relatedLicenseId && String(d.relatedLicenseId) === String(l.id)) ||
+    (!d.relatedLicenseId && d.relatedState && l.state.toLowerCase().includes(d.relatedState.toLowerCase()))
+  );
   if (relDocs.length) {
     html += '<div class="detail-section"><h3>Related Documents</h3>';
     relDocs.forEach(d => {
-      html += `<div style="padding:4px 0;font-size:13px">${d.name} <span class="badge badge-other">${d.docType}</span></div>`;
+      const dHasFile = d.fileUrl || d.dataUrl;
+      html += `<div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:var(--gray-50);border-radius:var(--radius);border:1px solid var(--gray-200);margin-bottom:4px;font-size:13px">
+        <span>📄</span>
+        <strong style="flex:1">${escHtml(d.name)}</strong>
+        <span class="badge badge-other">${d.docType}</span>
+        <span style="font-size:11px;color:var(--gray-400)">${formatDate(d.uploadDate)}</span>
+        ${dHasFile ? '<button class="btn btn-sm btn-success" style="font-size:10px" onclick="viewGeneralDoc(\''+d.id+'\')">View</button>' : ''}
+      </div>`;
     });
     html += '</div>';
   }
@@ -3015,6 +3034,10 @@ function renderInspections() {
 // ===== DOCUMENTS =====
 function openUploadDoc() {
   document.getElementById('uploadDocForm').reset();
+  document.getElementById('doc_relatedLicenseId').value = '';
+  document.getElementById('doc_relatedState').value = '';
+  document.getElementById('doc_selectedLicense').innerHTML = '';
+  document.getElementById('doc_licenseSearchResults').style.display = 'none';
   populateDocLocationSelect();
   openModal('uploadDocModal');
 }
@@ -3024,12 +3047,20 @@ async function saveDocument(e) {
   const fileInput = document.getElementById('doc_file');
   const file = fileInput.files[0];
 
+  const relatedLicenseId = document.getElementById('doc_relatedLicenseId').value;
+  if (!relatedLicenseId) {
+    showToast('Please select a related license', 'error');
+    return;
+  }
+  const relatedLicense = licenses.find(l => String(l.id) === String(relatedLicenseId));
+
   const doc = {
     id: documents.length ? Math.max(...documents.map(d => d.id)) + 1 : 1,
     name: file ? file.name : 'Untitled',
     location: document.getElementById('doc_location').value,
     docType: document.getElementById('doc_type').value,
-    relatedState: document.getElementById('doc_relatedState').value,
+    relatedState: relatedLicense ? relatedLicense.state : document.getElementById('doc_relatedState').value,
+    relatedLicenseId: relatedLicenseId,
     notes: document.getElementById('doc_notes').value,
     uploadDate: new Date().toISOString().split('T')[0],
     fileSize: file ? file.size : 0,
@@ -3087,12 +3118,19 @@ function renderDocuments() {
     const ext = d.fileType || d.name.split('.').pop().toLowerCase();
     const iconClass = ext === 'pdf' ? 'pdf' : (ext === 'doc' || ext === 'docx') ? 'doc' : (ext === 'xls' || ext === 'xlsx') ? 'xls' : 'other';
     const icon = ext === 'pdf' ? 'PDF' : (ext === 'doc' || ext === 'docx') ? 'DOC' : (ext === 'xls' || ext === 'xlsx') ? 'XLS' : ext.toUpperCase();
-    return `<div class="doc-card">
+    const hasFile = d.fileUrl || d.dataUrl;
+    const linkedLic = d.relatedLicenseId ? licenses.find(l => String(l.id) === String(d.relatedLicenseId)) : null;
+    return `<div class="doc-card" style="position:relative">
       <div class="doc-icon ${iconClass}">${icon}</div>
       <div class="doc-info">
-        <h4>${d.name}</h4>
-        <p>${d.location || 'General'} ${d.relatedState ? '| ' + d.relatedState : ''}</p>
+        <h4>${escHtml(d.name)}</h4>
+        <p>${d.location || 'General'} ${d.relatedState ? '| ' + escHtml(d.relatedState) : ''}</p>
+        ${linkedLic ? '<p style="font-size:11px;color:var(--primary);cursor:pointer" onclick="clickLicense(\''+linkedLic.id+'\')">License: '+escHtml(linkedLic.state)+' — '+escHtml(linkedLic.licenseNumber)+'</p>' : ''}
         <p><span class="badge badge-other">${d.docType}</span> ${formatDate(d.uploadDate)}</p>
+        <div style="display:flex;gap:6px;margin-top:6px">
+          ${hasFile ? '<button class="btn btn-sm btn-success" style="font-size:11px" onclick="viewGeneralDoc(\''+d.id+'\')">View</button>' : ''}
+          ${canEdit() ? '<button class="btn btn-sm btn-danger" style="font-size:11px" onclick="deleteDocument(\''+d.id+'\')">Delete</button>' : ''}
+        </div>
       </div>
     </div>`;
   }).join('');
@@ -3750,6 +3788,133 @@ function devBypass() {
   renderAll();
   renderUserTable();
   updateSpStatus();
+}
+
+// ===== DOCUMENT LICENSE PICKER =====
+function renderDocLicenseResults() {
+  const q = (document.getElementById('doc_licenseSearch').value || '').toLowerCase().trim();
+  const container = document.getElementById('doc_licenseSearchResults');
+  const locFilter = document.getElementById('doc_location').value;
+
+  if (!q || q.length < 1) { container.style.display = 'none'; return; }
+
+  let filtered = licenses.filter(l => !l.archived &&
+    (l.state + ' ' + l.licenseNumber + ' ' + l.location + ' ' + (l.licenseHolder || '') + ' ' + l.type).toLowerCase().includes(q)
+  );
+  if (locFilter) filtered = filtered.filter(l => l.location === locFilter);
+  filtered = filtered.slice(0, 15);
+
+  if (!filtered.length) {
+    container.innerHTML = '<div style="padding:10px;font-size:13px;color:var(--gray-400)">No licenses found</div>';
+    container.style.display = 'block';
+    return;
+  }
+
+  container.innerHTML = filtered.map(l => {
+    const days = daysUntilExp(l.expirationDate);
+    return `<div style="padding:8px 12px;cursor:pointer;border-bottom:1px solid var(--gray-100);font-size:13px;transition:background .1s" onmouseover="this.style.background='var(--gray-50)'" onmouseout="this.style.background=''" onclick="selectDocLicense('${l.id}')">
+      <strong>${escHtml(l.state)}</strong> <span style="color:var(--gray-400)">— ${escHtml(l.location)}</span>
+      <div style="font-size:11px;color:var(--gray-500)">${l.licenseNumber || 'No #'} &middot; ${l.type} ${l.expirationDate ? '&middot; Exp: ' + formatDate(l.expirationDate) : ''}</div>
+    </div>`;
+  }).join('');
+  container.style.display = 'block';
+}
+
+function selectDocLicense(licId) {
+  const l = licenses.find(x => String(x.id) === String(licId));
+  if (!l) return;
+  document.getElementById('doc_relatedLicenseId').value = l.id;
+  document.getElementById('doc_relatedState').value = l.state;
+  document.getElementById('doc_licenseSearch').value = l.state + ' — ' + l.location;
+  document.getElementById('doc_licenseSearchResults').style.display = 'none';
+  document.getElementById('doc_selectedLicense').innerHTML = `<div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:var(--gray-50);border-radius:var(--radius);border:1px solid var(--primary-light);font-size:13px">
+    <span style="color:var(--primary);font-weight:600">${escHtml(l.state)}</span>
+    <span style="color:var(--gray-500)">${escHtml(l.location)} &middot; ${l.licenseNumber || 'No #'} &middot; ${l.type}</span>
+    <button type="button" style="margin-left:auto;background:none;border:none;color:var(--gray-400);cursor:pointer;font-size:16px" onclick="clearDocLicense()">&times;</button>
+  </div>`;
+  // Auto-set location to match the license
+  if (l.location) document.getElementById('doc_location').value = l.location;
+}
+
+function clearDocLicense() {
+  document.getElementById('doc_relatedLicenseId').value = '';
+  document.getElementById('doc_relatedState').value = '';
+  document.getElementById('doc_licenseSearch').value = '';
+  document.getElementById('doc_selectedLicense').innerHTML = '';
+}
+
+// Close license search dropdown when clicking elsewhere
+document.addEventListener('click', e => {
+  const sr = document.getElementById('doc_licenseSearchResults');
+  if (sr && !e.target.closest('#doc_licenseSearch') && !e.target.closest('#doc_licenseSearchResults')) sr.style.display = 'none';
+});
+
+// ===== DELETE & VIEW GENERAL DOCUMENTS =====
+async function deleteDocument(docId) {
+  const doc = documents.find(d => String(d.id) === String(docId));
+  if (!doc) return;
+  if (!confirm('Delete document "' + (doc.name || 'Untitled') + '"? This cannot be undone.')) return;
+
+  // Remove from SharePoint if connected
+  if (doc.spItemId && spConnected) {
+    await spDeleteItem(SP_LIST_DOCUMENTS, doc.spItemId);
+  }
+
+  const idx = documents.findIndex(d => String(d.id) === String(docId));
+  if (idx >= 0) documents.splice(idx, 1);
+  saveLocalCache();
+  renderDocuments();
+  showToast('Document deleted', 'success');
+}
+
+function viewGeneralDoc(docId) {
+  const d = documents.find(x => String(x.id) === String(docId));
+  if (!d) return;
+  const fileSource = d.fileUrl || d.dataUrl;
+  if (!fileSource) { showToast('No file available', 'error'); return; }
+
+  const ext = (d.fileType || d.name.split('.').pop()).toLowerCase();
+  const isImage = ['png','jpg','jpeg'].includes(ext);
+  const isPdf = ext === 'pdf';
+  const fileName = d.name || 'document.' + ext;
+
+  // Find linked license
+  const linkedLic = d.relatedLicenseId ? licenses.find(l => String(l.id) === String(d.relatedLicenseId)) : null;
+
+  document.getElementById('docViewerTitle').textContent = fileName + (d.location ? ' — ' + d.location : '');
+
+  const dlBtn = document.getElementById('docViewerDownload');
+  dlBtn.href = fileSource;
+  if (d.dataUrl) {
+    dlBtn.setAttribute('download', fileName);
+    dlBtn.removeAttribute('target');
+  } else {
+    dlBtn.removeAttribute('download');
+    dlBtn.setAttribute('target', '_blank');
+  }
+  dlBtn.textContent = d.fileUrl ? 'Open in SharePoint' : 'Download';
+
+  const content = document.getElementById('docViewerContent');
+  if (isImage) {
+    content.innerHTML = '<img src="'+fileSource+'" alt="'+escHtml(fileName)+'" style="max-width:100%;max-height:70vh;object-fit:contain;padding:20px">';
+  } else if (isPdf) {
+    content.innerHTML = '<iframe src="'+fileSource+'" style="width:100%;min-height:600px;border:none"></iframe>';
+  } else {
+    content.innerHTML = '<div style="text-align:center;padding:60px"><div style="font-size:64px;margin-bottom:16px">📄</div><div style="font-size:16px;font-weight:600;margin-bottom:8px">'+escHtml(fileName)+'</div><div style="font-size:13px;color:var(--gray-500);margin-bottom:20px">This file type cannot be previewed in the browser.</div><a href="'+fileSource+'" '+(d.dataUrl ? 'download="'+escHtml(fileName)+'"' : 'target="_blank"')+' class="btn btn-primary">'+(d.fileUrl ? 'Open in SharePoint' : 'Download File')+'</a></div>';
+  }
+
+  const details = document.getElementById('docViewerDetails');
+  details.style.display = 'block';
+  details.innerHTML = '<div class="detail-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px 20px;font-size:13px">'
+    + '<div><strong style="color:var(--gray-500)">Location:</strong> '+escHtml(d.location || 'General')+'</div>'
+    + '<div><strong style="color:var(--gray-500)">Type:</strong> '+escHtml(d.docType)+'</div>'
+    + (linkedLic ? '<div><strong style="color:var(--gray-500)">License:</strong> '+escHtml(linkedLic.state)+' ('+escHtml(linkedLic.licenseNumber || 'N/A')+')</div>' : '')
+    + (d.relatedState && !linkedLic ? '<div><strong style="color:var(--gray-500)">Related:</strong> '+escHtml(d.relatedState)+'</div>' : '')
+    + '<div><strong style="color:var(--gray-500)">Uploaded:</strong> '+formatDate(d.uploadDate)+'</div>'
+    + (d.notes ? '<div style="grid-column:1/-1"><strong style="color:var(--gray-500)">Notes:</strong> '+escHtml(d.notes)+'</div>' : '')
+    + '</div>';
+
+  openModal('docViewerModal');
 }
 
 // ===== INSPECTION DOCUMENTS =====
