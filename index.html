@@ -1455,6 +1455,7 @@ const SEED_DATA = {
 // ===== INITIALIZATION =====
 function init() {
   loadLocalData();
+  migrateHolderNames();
   populateLocationFilters();
   initMsal();
   setupNavigation();
@@ -1467,6 +1468,31 @@ function loadLocalData() {
     inspections = d.inspections || [];
     documents = d.documents || [];
   } catch(e) { licenses = []; inspections = []; documents = []; }
+}
+
+function migrateHolderNames() {
+  // One-time migration: convert short location names to "DBA - City, ST" format
+  const holderMap = {};
+  LOCATIONS.forEach(loc => {
+    const info = LOCATION_INFO[loc] || {};
+    const dba = info.dba || loc;
+    const fullName = dba + ' - ' + loc;
+    // Map the short name (e.g. "Erie") to full format
+    const shortName = loc.split(',')[0].trim();
+    holderMap[shortName.toLowerCase()] = fullName;
+    holderMap[loc.toLowerCase()] = fullName;
+  });
+
+  let changed = false;
+  licenses.forEach(l => {
+    if (!l.licenseHolder) return;
+    const key = l.licenseHolder.trim().toLowerCase();
+    if (holderMap[key] && l.licenseHolder !== holderMap[key]) {
+      l.licenseHolder = holderMap[key];
+      changed = true;
+    }
+  });
+  if (changed) saveLocalCache();
 }
 
 function saveLocalCache() {
@@ -1970,6 +1996,20 @@ async function migrateToSharePoint() {
   showToast(`Migration complete! ${count} licenses migrated to SharePoint.`, 'success');
 }
 
+function mapHolderName(holder, location) {
+  if (!holder) return '';
+  // Check if holder matches a location short name
+  const key = holder.trim().toLowerCase();
+  for (const loc of LOCATIONS) {
+    const shortName = loc.split(',')[0].trim().toLowerCase();
+    if (key === shortName || key === loc.toLowerCase()) {
+      const info = LOCATION_INFO[loc] || {};
+      return (info.dba || loc) + ' - ' + loc;
+    }
+  }
+  return holder;
+}
+
 function importSeedData() {
   let id = 1;
   for (const [loc, items] of Object.entries(SEED_DATA)) {
@@ -1980,7 +2020,7 @@ function importSeedData() {
         state: item.s,
         licenseNumber: item.n || '',
         expirationDate: item.e || '',
-        licenseHolder: item.h || '',
+        licenseHolder: mapHolderName(item.h || '', loc),
         issueDate: item.i || '',
         renewalFrequency: item.f || '',
         lastVerified: item.v || '',
@@ -2883,8 +2923,14 @@ function renderPersonnelTable() {
   licenses.forEach(l => {
     if (!l.licenseHolder) return;
     const holder = l.licenseHolder.trim();
-    // Skip location names as holders
-    if (LOCATIONS.some(loc => loc.toLowerCase().includes(holder.toLowerCase())) || ['Erie','Jamestown','Houston','Denton','Corinth'].includes(holder)) return;
+    // Skip location/pharmacy names as holders (they're not personnel)
+    const holderLower = holder.toLowerCase();
+    if (LOCATIONS.some(loc => {
+      const info = LOCATION_INFO[loc] || {};
+      const dba = info.dba || loc;
+      const fullName = dba + ' - ' + loc;
+      return holderLower === loc.toLowerCase() || holderLower === fullName.toLowerCase() || holderLower === loc.split(',')[0].trim().toLowerCase();
+    })) return;
     if (holder.length < 2) return;
 
     const key = holder.toLowerCase();
