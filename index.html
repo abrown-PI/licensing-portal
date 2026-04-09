@@ -3814,9 +3814,11 @@ function searchLicenseHolder() {
   const ql = q.toLowerCase();
   LOCATIONS.forEach(loc => {
     const info = LOCATION_INFO[loc] || {};
+    const dba = info.dba || loc;
+    const displayName = dba + ' - ' + loc;
     const searchStr = (loc + ' ' + (info.dba || '') + ' ' + (info.businessName || '')).toLowerCase();
     if (searchStr.includes(ql)) {
-      results.push({ name: loc, type: 'location', sub: info.businessName || info.dba || '' });
+      results.push({ name: displayName, type: 'location', sub: info.businessName || '' });
     }
   });
 
