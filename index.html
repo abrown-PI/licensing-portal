@@ -818,9 +818,10 @@
             <label>Issue Date</label>
             <input type="date" id="lic_issueDate">
           </div>
-          <div class="form-group">
+          <div class="form-group" style="position:relative">
             <label>License Holder</label>
-            <input type="text" id="lic_holder" placeholder="e.g., Erie, Jenn">
+            <input type="text" id="lic_holder" placeholder="Search employee or location..." oninput="searchLicenseHolder()" onfocus="searchLicenseHolder()" autocomplete="off">
+            <div id="lic_holderResults" style="display:none;position:absolute;top:100%;left:0;right:0;background:white;border:1px solid var(--gray-300);border-radius:var(--radius);max-height:220px;overflow-y:auto;z-index:10;box-shadow:var(--shadow-md)"></div>
           </div>
           <div class="form-group">
             <label>Renewal Frequency</label>
@@ -2456,11 +2457,15 @@ function openLocationDetail(loc) {
       <td>${formatDate(l.expirationDate) || 'N/A'}</td>
       <td>${urgencyBadge(days, l.expirationDate)}</td>
       <td>${statusBadge(l.renewalStatus)}</td>
-      <td>
+      <td style="white-space:nowrap">
         ${hasFile
-          ? '<button class="btn btn-sm btn-success" style="font-size:11px" onclick="event.stopPropagation();viewLicenseDocument(\''+l.id+'\')">View Document</button>'
-          : '<span style="font-size:11px;color:var(--gray-400)">No document</span>'
+          ? '<button class="btn btn-sm btn-success" style="font-size:11px" onclick="event.stopPropagation();viewLicenseDocument(\''+l.id+'\')">View</button> '
+          : ''
         }
+        ${canUploadHere ? '<label class="btn btn-sm btn-'+(hasFile ? 'secondary' : 'primary')+'" style="font-size:11px;cursor:pointer;margin:0" onclick="event.stopPropagation()">'
+          +(hasFile ? 'Replace' : 'Upload')
+          +'<input type="file" accept=".pdf,.png,.jpg,.jpeg,.doc,.docx" style="display:none" onchange="quickUploadLicenseCopy(\''+l.id+'\', this)">'
+          +'</label>' : (!hasFile ? '<span style="font-size:11px;color:var(--gray-400)">No document</span>' : '')}
       </td>
     </tr>`;
   });
@@ -2912,6 +2917,10 @@ function renderPersonnelTable() {
         + '<input type="file" accept=".pdf,.png,.jpg,.jpeg,.doc,.docx" style="display:none" onchange="quickUploadLicenseCopy(\''+l.id+'\', this)">'
         + '</label>';
     }).join('') : '';
+    const editBtns = canEdit() ? p.licenses.map(l => {
+      return '<button class="btn btn-sm btn-secondary" style="font-size:10px;margin:2px;padding:2px 6px" onclick="clickLicense(\''+l.id+'\')">'
+        + 'Edit ' + escHtml(l.state.substring(0,12)) + '</button>';
+    }).join('') : '';
     return `<tr>
       <td><strong>${p.name}</strong></td>
       <td>${p.role}</td>
@@ -2919,7 +2928,7 @@ function renderPersonnelTable() {
       <td>${licLinks}</td>
       <td>${nextExp ? formatDate(nextExp.expirationDate) : 'N/A'}</td>
       <td>${urgencyBadge(days, nextExp ? nextExp.expirationDate : '')}</td>
-      <td style="white-space:nowrap">${docBtns}${uploadBtns}</td>
+      <td style="white-space:nowrap">${docBtns}${editBtns}${uploadBtns}</td>
     </tr>`;
   }).join('');
 
@@ -3789,6 +3798,99 @@ function devBypass() {
   renderUserTable();
   updateSpStatus();
 }
+
+// ===== LICENSE HOLDER LOOKUP =====
+let holderSearchTimeout;
+function searchLicenseHolder() {
+  const q = (document.getElementById('lic_holder').value || '').trim();
+  const container = document.getElementById('lic_holderResults');
+
+  if (q.length < 1) { container.style.display = 'none'; return; }
+
+  // Build results: locations + existing holders + 365 users
+  let results = [];
+
+  // 1. Pharmacy locations (the pharmacy itself may hold the license)
+  const ql = q.toLowerCase();
+  LOCATIONS.forEach(loc => {
+    const info = LOCATION_INFO[loc] || {};
+    const searchStr = (loc + ' ' + (info.dba || '') + ' ' + (info.businessName || '')).toLowerCase();
+    if (searchStr.includes(ql)) {
+      results.push({ name: loc, type: 'location', sub: info.businessName || info.dba || '' });
+    }
+  });
+
+  // 2. Existing known holders from licenses (for consistency)
+  const existingHolders = new Set();
+  licenses.forEach(l => {
+    if (l.licenseHolder && l.licenseHolder.length > 1) existingHolders.add(l.licenseHolder.trim());
+  });
+  existingHolders.forEach(h => {
+    if (h.toLowerCase().includes(ql) && !results.find(r => r.name === h)) {
+      results.push({ name: h, type: 'existing', sub: 'Existing license holder' });
+    }
+  });
+
+  // Show local results immediately
+  renderHolderResults(results, container);
+
+  // 3. Search Office 365 users via Graph API
+  clearTimeout(holderSearchTimeout);
+  holderSearchTimeout = setTimeout(async () => {
+    const token = await getToken();
+    if (!token) return;
+    try {
+      const eq = encodeURIComponent(q);
+      const resp = await fetch(
+        `${GRAPH_BASE}/users?$filter=startswith(displayName,'${eq}') or startswith(givenName,'${eq}') or startswith(surname,'${eq}')&$top=10&$select=displayName,mail,jobTitle,officeLocation`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      if (!resp.ok) return;
+      const data = await resp.json();
+      (data.value || []).forEach(u => {
+        if (!results.find(r => r.name === u.displayName)) {
+          results.push({ name: u.displayName, type: '365', sub: (u.jobTitle || '') + (u.officeLocation ? ' — ' + u.officeLocation : ''), email: u.mail });
+        }
+      });
+      renderHolderResults(results, container);
+    } catch(e) { /* silently fail */ }
+  }, 300);
+}
+
+function renderHolderResults(results, container) {
+  if (!results.length) {
+    container.innerHTML = '<div style="padding:10px;font-size:13px;color:var(--gray-400)">No matches — type to search employees and locations</div>';
+    container.style.display = 'block';
+    return;
+  }
+
+  container.innerHTML = results.slice(0, 15).map(r => {
+    const icon = r.type === 'location' ? '🏥' : r.type === '365' ? '👤' : '📋';
+    const label = r.type === 'location' ? 'Location' : r.type === '365' ? 'Office 365' : 'Existing';
+    return `<div style="padding:8px 12px;cursor:pointer;border-bottom:1px solid var(--gray-100);font-size:13px;display:flex;align-items:center;gap:8px;transition:background .1s"
+      onmouseover="this.style.background='var(--gray-50)'" onmouseout="this.style.background=''"
+      onclick="selectLicenseHolder('${escHtml(r.name)}')">
+      <span>${icon}</span>
+      <div style="flex:1;min-width:0">
+        <strong>${escHtml(r.name)}</strong>
+        ${r.sub ? '<div style="font-size:11px;color:var(--gray-500)">'+escHtml(r.sub)+'</div>' : ''}
+      </div>
+      <span style="font-size:10px;color:var(--gray-400);background:var(--gray-100);padding:2px 6px;border-radius:4px">${label}</span>
+    </div>`;
+  }).join('');
+  container.style.display = 'block';
+}
+
+function selectLicenseHolder(name) {
+  document.getElementById('lic_holder').value = name;
+  document.getElementById('lic_holderResults').style.display = 'none';
+}
+
+// Close holder dropdown on outside click
+document.addEventListener('click', e => {
+  const hr = document.getElementById('lic_holderResults');
+  if (hr && !e.target.closest('#lic_holder') && !e.target.closest('#lic_holderResults')) hr.style.display = 'none';
+});
 
 // ===== DOCUMENT LICENSE PICKER =====
 function renderDocLicenseResults() {
