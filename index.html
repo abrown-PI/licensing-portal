@@ -1518,6 +1518,25 @@ function migrateLocationName(loc) {
   return LOCATION_NAME_MIGRATIONS[loc] || loc;
 }
 
+function matchOfficeToLocation(office) {
+  if (!office) return null;
+  const o = office.toLowerCase().trim();
+  // Try exact match against location keys
+  for (const loc of LOCATIONS) {
+    if (loc.toLowerCase() === o) return loc;
+  }
+  // Try matching city name from location info or key
+  for (const loc of LOCATIONS) {
+    const info = LOCATION_INFO[loc] || {};
+    const city = (info.city || '').toLowerCase();
+    const locCity = loc.split(',')[0].trim().toLowerCase();
+    if (city && o.includes(city)) return loc;
+    if (locCity && o.includes(locCity)) return loc;
+    if (o === locCity) return loc;
+  }
+  return null;
+}
+
 function licDisplayName(l) {
   if (l.licenseState) return l.state + ' (' + l.licenseState + ')';
   return l.state;
@@ -3522,15 +3541,17 @@ async function resolveUserRole() {
   if (!signedInUser) return;
   const upn = signedInUser.email.toLowerCase();
 
-  // Also fetch the user's mail property from Graph (may differ from UPN)
+  // Also fetch the user's mail + office from Graph (may differ from UPN)
   let graphMail = '';
+  let graphOffice = '';
   try {
     const token = await getToken();
     if (token) {
-      const resp = await fetch(`${GRAPH_BASE}/me?$select=mail,userPrincipalName`, { headers: { Authorization: `Bearer ${token}` } });
+      const resp = await fetch(`${GRAPH_BASE}/me?$select=mail,userPrincipalName,officeLocation`, { headers: { Authorization: `Bearer ${token}` } });
       if (resp.ok) {
         const data = await resp.json();
         graphMail = (data.mail || '').toLowerCase();
+        graphOffice = data.officeLocation || '';
       }
     }
   } catch(e) { console.warn('Graph /me lookup failed:', e); }
@@ -3569,11 +3590,15 @@ async function resolveUserRole() {
     }
   }
 
-  // Not in the list — default based on domain
+  // Not in the list — restrict to their own location based on AD office
   const domain = upn.split('@')[1];
   if (ALLOWED_DOMAINS.includes(domain)) {
-    userRole = ROLES.OFFICE_STAFF; // default to office staff for recognized domains
-    userLocations = [...LOCATIONS];
+    userRole = ROLES.LOCATION_MANAGER;
+    isAdmin = false;
+    // Try to match their AD office to a known location
+    const matchedLoc = graphOffice ? matchOfficeToLocation(graphOffice) : null;
+    userLocations = matchedLoc ? [matchedLoc] : [];
+    console.log('Unlisted user — office:', graphOffice, 'matched:', matchedLoc);
   } else {
     userRole = null; // no access
     userLocations = [];
