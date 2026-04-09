@@ -1497,7 +1497,21 @@ function loadLocalData() {
     licenses = d.licenses || [];
     inspections = d.inspections || [];
     documents = d.documents || [];
+    // Migrate old location names on all records
+    licenses.forEach(l => { if (l.location) l.location = migrateLocationName(l.location); });
+    inspections.forEach(i => { if (i.location) i.location = migrateLocationName(i.location); });
+    documents.forEach(d => { if (d.location) d.location = migrateLocationName(d.location); });
   } catch(e) { licenses = []; inspections = []; documents = []; }
+}
+
+// Map old location names to new ones
+const LOCATION_NAME_MIGRATIONS = {
+  'Florida (St. Pete)': 'Seminole, FL',
+  'Virginia (Virginia Beach)': 'Virginia Beach, VA'
+};
+
+function migrateLocationName(loc) {
+  return LOCATION_NAME_MIGRATIONS[loc] || loc;
 }
 
 function migrateHolderNames() {
@@ -1918,6 +1932,10 @@ async function loadFromSharePoint() {
       licenses = licItems.map(spFieldsToLicense);
       inspections = inspItems.map(spFieldsToInspection);
       documents = docItems.map(spFieldsToDocument);
+      // Migrate old location names
+      licenses.forEach(l => { if (l.location) l.location = migrateLocationName(l.location); });
+      inspections.forEach(i => { if (i.location) i.location = migrateLocationName(i.location); });
+      documents.forEach(d => { if (d.location) d.location = migrateLocationName(d.location); });
       saveLocalCache();
       renderAll();
       showToast(`Loaded ${licenses.length} licenses from SharePoint`, 'success');
@@ -3443,10 +3461,18 @@ async function loadUserRoles() {
       email: email,
       displayName: name,
       role: f.Role || ROLES.LOCATION_MANAGER,
-      locations: (f.Locations || '').split(',').map(s => s.trim()).filter(Boolean),
+      locations: (f.Locations || '').split(',').map(s => s.trim()).filter(Boolean).map(migrateLocationName),
       adOfficeLocation: office
     };
   });
+  // Update SP records if location names were migrated
+  for (const u of userRoles) {
+    const rawLocs = (items.find(i => i.id === u.spItemId)?.fields?.Locations || '');
+    const migratedLocs = u.locations.join(', ');
+    if (rawLocs && migratedLocs !== rawLocs && u.spItemId) {
+      spUpdateItem(SP_LIST_USERS, u.spItemId, { Locations: migratedLocs });
+    }
+  }
   // Backfill missing office locations from Azure AD
   backfillOfficeLocations();
 }
