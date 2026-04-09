@@ -1637,7 +1637,28 @@ async function spCreateLists() {
   ];
 
   for (const def of listDefs) {
-    if (spListIds[def.displayName]) { console.log('List exists:', def.displayName); continue; }
+    if (spListIds[def.displayName]) {
+      // List exists — check for missing columns and add them
+      const listId = spListIds[def.displayName];
+      try {
+        const colResp = await fetch(`${GRAPH_BASE}/sites/${spSiteId}/lists/${listId}/columns?$top=100`, { headers: { Authorization: `Bearer ${token}` } });
+        if (colResp.ok) {
+          const colData = await colResp.json();
+          const existingCols = new Set((colData.value || []).map(c => c.name));
+          for (const col of def.columns) {
+            if (!existingCols.has(col.name)) {
+              console.log('Adding missing column:', col.name, 'to', def.displayName);
+              await fetch(`${GRAPH_BASE}/sites/${spSiteId}/lists/${listId}/columns`, {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify(col)
+              });
+            }
+          }
+        }
+      } catch(e) { console.warn('Column check failed for', def.displayName, e); }
+      continue;
+    }
     try {
       // Create list
       const createResp = await fetch(`${GRAPH_BASE}/sites/${spSiteId}/lists`, {
@@ -2185,6 +2206,8 @@ async function onSignedIn(account) {
   // Connect to SharePoint and load fresh data
   const connected = await spConnect();
   if (connected) {
+    // Ensure any new columns exist on existing lists
+    await spCreateLists();
     // Load user roles first so we know permissions
     await loadUserRoles();
     await resolveUserRole();
