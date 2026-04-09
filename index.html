@@ -164,6 +164,32 @@
   .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(15,23,42,.5); z-index: 200; align-items: center; justify-content: center; }
   .modal-overlay.open { display: flex; }
   .modal { background: white; border-radius: 12px; width: 90%; max-width: 800px; max-height: 90vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,.25); }
+
+  /* Document Viewer Modal */
+  #docViewerModal .modal { max-width: 1000px; max-height: 95vh; display: flex; flex-direction: column; }
+  #docViewerModal .modal-body { flex: 1; overflow-y: auto; padding: 0; display: flex; flex-direction: column; }
+  .doc-viewer-toolbar { display: flex; align-items: center; gap: 8px; padding: 12px 24px; background: var(--gray-50); border-bottom: 1px solid var(--gray-200); flex-wrap: wrap; }
+  .doc-viewer-toolbar .btn { font-size: 13px; }
+  .doc-viewer-content { flex: 1; display: flex; align-items: center; justify-content: center; min-height: 400px; background: var(--gray-100); position: relative; overflow: auto; }
+  .doc-viewer-content iframe { width: 100%; height: 100%; min-height: 500px; border: none; }
+  .doc-viewer-content img { max-width: 100%; max-height: 70vh; object-fit: contain; }
+  .doc-viewer-details { padding: 16px 24px; border-top: 1px solid var(--gray-200); background: var(--gray-50); }
+  .doc-viewer-details .detail-grid { font-size: 13px; }
+
+  /* View License floating search */
+  .view-license-btn { display: flex; align-items: center; gap: 6px; padding: 4px 12px; height: 34px; font-size: 13px; font-weight: 500; color: rgba(255,255,255,.85); cursor: pointer; border: 1px solid rgba(255,255,255,.25); background: rgba(255,255,255,.1); border-radius: var(--radius); transition: all .15s; white-space: nowrap; margin-right: 8px; }
+  .view-license-btn:hover { background: rgba(255,255,255,.2); color: white; }
+  .view-license-btn svg { opacity: .7; }
+  #docSearchModal .modal { max-width: 600px; }
+  .doc-search-input { width: 100%; padding: 12px 16px 12px 40px; font-size: 15px; border: 2px solid var(--primary-light); border-radius: var(--radius); outline: none; }
+  .doc-search-input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(42,110,187,.15); }
+  .doc-search-results { max-height: 400px; overflow-y: auto; margin-top: 12px; }
+  .doc-search-item { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; border-radius: var(--radius); cursor: pointer; transition: background .1s; border-bottom: 1px solid var(--gray-100); }
+  .doc-search-item:hover { background: var(--gray-50); }
+  .doc-search-item .item-info { flex: 1; min-width: 0; }
+  .doc-search-item .item-name { font-weight: 600; font-size: 14px; color: var(--gray-800); }
+  .doc-search-item .item-meta { font-size: 12px; color: var(--gray-500); margin-top: 2px; }
+  .doc-search-item .item-actions { display: flex; gap: 6px; flex-shrink: 0; margin-left: 12px; }
   .modal-header { padding: 20px 24px; border-bottom: 1px solid var(--gray-200); display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; background: white; z-index: 1; border-radius: 12px 12px 0 0; }
   .modal-header h2 { font-size: 18px; color: var(--primary-dark); }
   .modal-body { padding: 24px; }
@@ -271,6 +297,10 @@
     <button class="nav-tab" data-page="documents">Documents</button>
     <button class="nav-tab admin-only-tab" data-page="users" style="display:none">User Management</button>
   </div>
+  <button class="view-license-btn" onclick="openDocSearch()" title="Quick search and view any license document">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+    View License
+  </button>
   <div class="nav-actions">
     <span class="user-info" id="userInfo"></span>
     <span id="userRoleBadge" style="font-size:11px;padding:3px 8px;border-radius:12px;background:rgba(255,255,255,.15);color:rgba(255,255,255,.8);display:none"></span>
@@ -397,6 +427,7 @@
                 <th onclick="sortLicenses('daysUntil')">Urgency</th>
                 <th onclick="sortLicenses('renewalStatus')">Status</th>
                 <th>Holder</th>
+                <th>Document</th>
               </tr>
             </thead>
             <tbody id="licenseTableBody"></tbody>
@@ -706,6 +737,41 @@
   </div>
 </div>
 
+<!-- DOCUMENT SEARCH MODAL -->
+<div class="modal-overlay" id="docSearchModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h2>Find License Document</h2>
+      <button class="modal-close" onclick="closeModal('docSearchModal')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div style="position:relative">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--gray-400)" stroke-width="2" style="position:absolute;left:14px;top:14px"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+        <input type="text" class="doc-search-input" id="docSearchInput" placeholder="Search by license name, number, location, or holder..." oninput="renderDocSearchResults()">
+      </div>
+      <div class="doc-search-results" id="docSearchResults"></div>
+    </div>
+  </div>
+</div>
+
+<!-- DOCUMENT VIEWER MODAL -->
+<div class="modal-overlay" id="docViewerModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="docViewerTitle">License Document</h2>
+      <div style="display:flex;gap:8px;align-items:center">
+        <button class="btn btn-sm btn-primary" id="docViewerPrint" onclick="printLicenseDoc()">Print</button>
+        <a class="btn btn-sm btn-success" id="docViewerDownload" href="#" download>Download</a>
+        <button class="modal-close" onclick="closeModal('docViewerModal')">&times;</button>
+      </div>
+    </div>
+    <div class="modal-body">
+      <div class="doc-viewer-content" id="docViewerContent"></div>
+      <div class="doc-viewer-details" id="docViewerDetails" style="display:none"></div>
+    </div>
+  </div>
+</div>
+
 <!-- ADD/EDIT LICENSE MODAL -->
 <div class="modal-overlay" id="licenseFormModal">
   <div class="modal">
@@ -801,6 +867,20 @@
             <textarea id="lic_renewalInstructions" placeholder="Step-by-step instructions for renewing this license..." style="min-height:120px"></textarea>
           </div>
           <div class="form-group full-width">
+            <label>Renewal Documents <span style="font-weight:400;color:var(--gray-400)">(past applications, filled forms, supporting docs)</span></label>
+            <div id="lic_renewalDocsPreview" style="margin-bottom:8px"></div>
+            <div style="display:flex;gap:8px;align-items:end">
+              <div style="flex:1">
+                <input type="file" id="lic_renewalDocFile" accept=".pdf,.png,.jpg,.jpeg,.doc,.docx,.xlsx,.xls" multiple>
+                <small style="color:var(--gray-400)">Upload applications, forms, or supporting documents for this license</small>
+              </div>
+              <div style="flex:1">
+                <input type="text" id="lic_renewalDocNotes" placeholder="Label (e.g. 2024 Renewal Application, DEA Form 224)">
+              </div>
+              <button type="button" class="btn btn-sm btn-primary" onclick="addRenewalDoc()">Add</button>
+            </div>
+          </div>
+          <div class="form-group full-width">
             <label>Notes</label>
             <textarea id="lic_notes" placeholder="Any additional notes..."></textarea>
           </div>
@@ -831,7 +911,7 @@
 <div class="modal-overlay" id="inspectionFormModal">
   <div class="modal">
     <div class="modal-header">
-      <h2>Add Inspection / Audit</h2>
+      <h2 id="inspFormTitle">Add Inspection / Audit</h2>
       <button class="modal-close" onclick="closeModal('inspectionFormModal')">&times;</button>
     </div>
     <div class="modal-body">
@@ -881,7 +961,21 @@
             <label>Follow-up Date</label>
             <input type="date" id="insp_followup">
           </div>
+          <div class="form-group full-width">
+            <label>Documents <span style="font-weight:400;color:var(--gray-400)">(inspection reports, corrective action plans, deficiency letters, etc.)</span></label>
+            <div id="insp_docsPreview" style="margin-bottom:8px"></div>
+            <div style="display:flex;gap:8px;align-items:end">
+              <div style="flex:1">
+                <input type="file" id="insp_docFile" accept=".pdf,.png,.jpg,.jpeg,.doc,.docx,.xlsx,.xls" multiple>
+              </div>
+              <div style="flex:1">
+                <input type="text" id="insp_docLabel" placeholder="Label (e.g. Inspection Report, Corrective Action Plan)">
+              </div>
+              <button type="button" class="btn btn-sm btn-primary" onclick="addInspDoc()">Add</button>
+            </div>
+          </div>
         </div>
+        <input type="hidden" id="insp_editId">
         <div class="form-actions">
           <button type="button" class="btn btn-secondary" onclick="closeModal('inspectionFormModal')">Cancel</button>
           <button type="submit" class="btn btn-primary">Save Inspection</button>
@@ -993,7 +1087,7 @@ let userRoles = []; // all user role records from SP
 // ===== DATA STORE =====
 const DATA_KEY = 'licensing_portal_data';
 let LOCATIONS = [
-  'Erie, PA', 'Jamestown, NY', 'Houston, TX', 'Florida (St. Pete)', 'Virginia (Virginia Beach)',
+  'Erie, PA', 'Jamestown, NY', 'Houston, TX', 'Seminole, FL', 'Virginia Beach, VA',
   'Greenville, SC', 'Tucson, AZ', 'Lancaster, PA', 'Denton, TX', 'Flower Mound, TX', 'Corinth, TX'
 ];
 
@@ -1043,7 +1137,7 @@ const LOCATION_INFO = {
     phone: "281-251-0888", fax: "281-251-0889",
     hours: "M-F 9:00am - 5:30pm"
   },
-  "Florida (St. Pete)": {
+  "Seminole, FL": {
     businessName: "Creative Pharmacy Solutions East, LLC",
     dba: "Pharmacy Innovations",
     address: "7779 Starkey Rd",
@@ -1055,7 +1149,7 @@ const LOCATION_INFO = {
     phone: "727-381-9799", fax: "727-347-2050",
     hours: "M-F 9:00am - 5:30pm"
   },
-  "Virginia (Virginia Beach)": {
+  "Virginia Beach, VA": {
     businessName: "Creative Pharmacy Solutions East, LLC",
     dba: "Pharmacy Innovations",
     address: "4001 Virginia Beach Blvd Ste 110",
@@ -1301,13 +1395,13 @@ const SEED_DATA = {
     {s:"DEA License",n:"FR0629898",e:"2028-03-31"},
     {s:"CBD license?",n:"",e:""}
   ],
-  "Florida (St. Pete)": [
+  "Seminole, FL": [
     {s:"FL",n:"PH30191",e:"2027-02-28",w:"My Dashboard",rs:"SUBMITTED-WAITING"},
     {s:"Ruben Santana Pharmacist",n:"PS59798",e:"2027-09-30",h:"Ruben",i:"2019-08-22"},
     {s:"GA",n:"PHNR001030",e:"2025-06-30",nt:"LAPSED",w:"Home",rs:"LAPSED"},
     {s:"DEA License",n:"FP6217675",e:"2028-08-31"}
   ],
-  "Virginia (Virginia Beach)": [
+  "Virginia Beach, VA": [
     {s:"VA",n:"201003136",e:"2026-04-30",w:"Home",rs:"SUBMITTED-WAITING"},
     {s:"Jeffrey Scott Smithson Pharmacist",n:"202009780",e:"2026-12-31",h:"Jeffrey",i:"1989-08-09"},
     {s:"DEA License",n:"FP5581598",e:"2027-08-31"}
@@ -1370,9 +1464,10 @@ function loadLocalData() {
 
 function saveLocalCache() {
   // Save to localStorage as cache (exclude large file data to avoid quota)
-  const cacheLicenses = licenses.map(l => { const c = {...l}; delete c.licenseCopy; return c; });
+  const cacheLicenses = licenses.map(l => { const c = {...l}; delete c.licenseCopy; if (c.renewalDocs) c.renewalDocs = c.renewalDocs.map(d => { const cd = {...d}; delete cd.dataUrl; return cd; }); return c; });
+  const cacheInsp = inspections.map(i => { const c = {...i}; if (c.inspDocs) c.inspDocs = c.inspDocs.map(d => { const cd = {...d}; delete cd.dataUrl; return cd; }); return c; });
   const cacheDocs = documents.map(d => { const c = {...d}; delete c.dataUrl; return c; });
-  localStorage.setItem(DATA_KEY, JSON.stringify({ licenses: cacheLicenses, inspections, documents: cacheDocs }));
+  localStorage.setItem(DATA_KEY, JSON.stringify({ licenses: cacheLicenses, inspections: cacheInsp, documents: cacheDocs }));
 }
 
 // ===== SHAREPOINT GRAPH API LAYER =====
@@ -1447,7 +1542,8 @@ async function spCreateLists() {
       { name: 'RenewalStatus', text: {} },
       { name: 'LicenseCopyUrl', text: {} },
       { name: 'LicenseCopyName', text: {} },
-      { name: 'LicenseCopyDate', text: {} }
+      { name: 'LicenseCopyDate', text: {} },
+      { name: 'RenewalDocs', text: {} }
     ]},
     { displayName: SP_LIST_INSPECTIONS, columns: [
       { name: 'Location', text: {} },
@@ -1457,7 +1553,8 @@ async function spCreateLists() {
       { name: 'Inspector', text: {} },
       { name: 'RelatedLicense', text: {} },
       { name: 'Notes', text: { allowMultipleLines: true } },
-      { name: 'FollowupDate', text: {} }
+      { name: 'FollowupDate', text: {} },
+      { name: 'InspDocs', text: {} }
     ]},
     { displayName: SP_LIST_DOCUMENTS, columns: [
       { name: 'Location', text: {} },
@@ -1619,7 +1716,8 @@ function licenseToSpFields(l) {
     Archived: l.archived ? 'true' : '',
     LicenseCopyUrl: l.licenseCopyUrl || '',
     LicenseCopyName: l.licenseCopyName || '',
-    LicenseCopyDate: l.licenseCopyDate || ''
+    LicenseCopyDate: l.licenseCopyDate || '',
+    RenewalDocs: JSON.stringify(l.renewalDocs || [])
   };
 }
 
@@ -1648,7 +1746,8 @@ function spFieldsToLicense(item) {
     archived: f.Archived === 'true',
     licenseCopyUrl: f.LicenseCopyUrl || '',
     licenseCopyName: f.LicenseCopyName || '',
-    licenseCopyDate: f.LicenseCopyDate || ''
+    licenseCopyDate: f.LicenseCopyDate || '',
+    renewalDocs: f.RenewalDocs ? JSON.parse(f.RenewalDocs) : []
   };
 }
 
@@ -1662,7 +1761,8 @@ function inspectionToSpFields(i) {
     Inspector: i.inspector || '',
     RelatedLicense: i.relatedLicense || '',
     Notes: i.notes || '',
-    FollowupDate: i.followupDate || ''
+    FollowupDate: i.followupDate || '',
+    InspDocs: JSON.stringify(i.inspDocs || [])
   };
 }
 
@@ -1678,7 +1778,8 @@ function spFieldsToInspection(item) {
     inspector: f.Inspector || '',
     relatedLicense: f.RelatedLicense || '',
     notes: f.Notes || '',
-    followupDate: f.FollowupDate || ''
+    followupDate: f.FollowupDate || '',
+    inspDocs: f.InspDocs ? JSON.parse(f.InspDocs) : []
   };
 }
 
@@ -1880,6 +1981,7 @@ function importSeedData() {
         notes: item.nt || '',
         renewalStatus: item.rs || '',
         renewalInstructions: '',
+        renewalDocs: [],
         type: detectLicenseType(item.s),
         inspectionAccepted: ''
       });
@@ -2183,16 +2285,34 @@ function renderLocationsGrid() {
     const current = withExp.filter(l => daysUntilExp(l.expirationDate) > 90).length;
     const nextExp = withExp.filter(l => daysUntilExp(l.expirationDate) >= 0).sort((a,b) => new Date(a.expirationDate) - new Date(b.expirationDate))[0];
 
+    // Break down by category
+    const keyTypes = ['Pharmacy','DEA','Controlled Substance','Sterile Compounding','Hemp','Pseudoephedrine'];
+    const personalTypes = ['Pharmacist','Technician'];
+    const keyCount = locLics.filter(l => keyTypes.includes(l.type) || (l.state && l.state.match(/^(DEA|NPI|NABP)/))).length;
+    const personalCount = locLics.filter(l => personalTypes.includes(l.type)).length;
+    const otherCount = locLics.length - keyCount - personalCount;
+
+    // Format city, state for display
+    const displayLoc = (info.city && info.stateAbbr) ? info.city + ', ' + info.stateAbbr : loc;
+
     return `<div class="location-card" onclick="openLocationDetail('${loc}')">
       <div class="location-card-header">
         <h3>${info.dba || loc}</h3>
-        <div class="loc-count">${loc} &middot; ${locLics.length} licenses</div>
+        <div class="loc-count">${displayLoc}</div>
       </div>
       <div class="location-card-body">
         <div style="font-size:12px;color:var(--gray-500);margin-bottom:8px;border-bottom:1px solid var(--gray-100);padding-bottom:8px">
           ${info.businessName ? '<div><strong>'+info.businessName+'</strong></div>' : ''}
           ${info.address ? '<div>'+info.address+', '+info.city+', '+info.stateAbbr+' '+info.zip+'</div>' : ''}
           ${info.phone ? '<div>'+info.phone+'</div>' : ''}
+        </div>
+        <div style="font-size:12px;color:var(--gray-600);margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid var(--gray-100)">
+          <div style="font-weight:600;margin-bottom:4px">${locLics.length} Total Licenses</div>
+          <div style="display:flex;gap:12px;flex-wrap:wrap">
+            ${keyCount ? '<span>'+keyCount+' Location/Key</span>' : ''}
+            ${personalCount ? '<span>'+personalCount+' Personnel</span>' : ''}
+            ${otherCount > 0 ? '<span>'+otherCount+' Other</span>' : ''}
+          </div>
         </div>
         <div class="loc-stat-row"><span class="loc-stat-label">Expired</span><span class="${expired ? 'loc-urgent' : 'loc-ok'}">${expired}</span></div>
         <div class="loc-stat-row"><span class="loc-stat-label">Expiring &lt; 90 days</span><span class="${expSoon ? 'loc-warning' : 'loc-ok'}">${expSoon}</span></div>
@@ -2269,13 +2389,9 @@ function openLocationDetail(loc) {
         <td>${statusBadge(l.renewalStatus) || '<span class="status-badge status-current">Current</span>'}</td>
         <td>
           ${hasFile
-            ? '<a href="'+(l.licenseCopyUrl || l.licenseCopy)+'" '+(l.licenseCopyUrl ? 'target="_blank"' : 'download="'+escHtml(l.licenseCopyName)+'"')+' class="btn btn-sm btn-success" style="font-size:11px">View Document</a> '
-            : ''
+            ? '<button class="btn btn-sm btn-success" style="font-size:11px" onclick="event.stopPropagation();viewLicenseDocument(\''+l.id+'\')">View Document</button>'
+            : '<span style="font-size:12px;color:var(--gray-400)">No document</span>'
           }
-          ${canUploadHere ? '<label class="btn btn-sm btn-'+(hasFile ? 'secondary' : 'primary')+'" style="font-size:11px;cursor:pointer;margin:0">'
-            +(hasFile ? 'Replace' : 'Upload')
-            +'<input type="file" accept=".pdf,.png,.jpg,.jpeg,.doc,.docx" style="display:none" onchange="quickUploadLicenseCopy(\''+l.id+'\', this)">'
-            +'</label>' : (!hasFile ? '<span style="font-size:12px;color:var(--gray-400)">No document</span>' : '')}
         </td>
       </tr>`;
     });
@@ -2303,19 +2419,16 @@ function openLocationDetail(loc) {
     locPersonnel.forEach(p => {
       const nextExp = p.licenses.filter(l => l.expirationDate && daysUntilExp(l.expirationDate) >= 0)
         .sort((a,b) => new Date(a.expirationDate) - new Date(b.expirationDate))[0];
-      const uploadBtns = canUploadHere ? p.licenses.map(l => {
-        const hasFile = l.licenseCopyUrl || l.licenseCopy;
-        return '<label class="btn btn-sm btn-'+(hasFile ? 'secondary' : 'primary')+'" style="font-size:10px;cursor:pointer;margin:2px;padding:2px 6px" onclick="event.stopPropagation()">'
-          + escHtml(l.state.substring(0,15)) + ' ' + (hasFile ? '&#10003;' : '&#8593;')
-          + '<input type="file" accept=".pdf,.png,.jpg,.jpeg,.doc,.docx" style="display:none" onchange="quickUploadLicenseCopy(\''+l.id+'\', this)">'
-          + '</label>';
-      }).join('') : '';
+      const viewBtns = p.licenses.filter(l => l.licenseCopyUrl || l.licenseCopy).map(l => {
+        return '<button class="btn btn-sm btn-success" style="font-size:10px;margin:2px;padding:2px 6px" onclick="event.stopPropagation();viewLicenseDocument(\''+l.id+'\')">'
+          + escHtml(l.state.substring(0,15)) + '</button>';
+      }).join('') || '<span style="font-size:11px;color:var(--gray-400)">No documents</span>';
       html += `<tr>
         <td><strong>${p.name}</strong></td>
         <td>${p.type}</td>
         <td>${p.licenses.map(l => '<span style="cursor:pointer;color:var(--primary)" onclick="closeModal(\'locationDetailModal\');clickLicense(\''+l.id+'\')">' + l.licenseNumber + '</span>').join(', ')}</td>
         <td>${nextExp ? formatDate(nextExp.expirationDate) + ' ' + urgencyBadge(daysUntilExp(nextExp.expirationDate), nextExp.expirationDate) : 'N/A'}</td>
-        <td>${uploadBtns}</td>
+        <td>${viewBtns}</td>
       </tr>`;
     });
     html += '</tbody></table></div></div>';
@@ -2336,13 +2449,9 @@ function openLocationDetail(loc) {
       <td>${statusBadge(l.renewalStatus)}</td>
       <td>
         ${hasFile
-          ? '<a href="'+(l.licenseCopyUrl || l.licenseCopy)+'" '+(l.licenseCopyUrl ? 'target="_blank"' : 'download="'+escHtml(l.licenseCopyName || 'license')+'"')+' class="btn btn-sm btn-success" style="font-size:11px" onclick="event.stopPropagation()">View</a> '
-          : ''
+          ? '<button class="btn btn-sm btn-success" style="font-size:11px" onclick="event.stopPropagation();viewLicenseDocument(\''+l.id+'\')">View Document</button>'
+          : '<span style="font-size:11px;color:var(--gray-400)">No document</span>'
         }
-        ${canUploadHere ? '<label class="btn btn-sm btn-'+(hasFile ? 'secondary' : 'primary')+'" style="font-size:11px;cursor:pointer;margin:0" onclick="event.stopPropagation()">'
-          +(hasFile ? 'Replace' : 'Upload')
-          +'<input type="file" accept=".pdf,.png,.jpg,.jpeg,.doc,.docx" style="display:none" onchange="quickUploadLicenseCopy(\''+l.id+'\', this)">'
-          +'</label>' : ''}
       </td>
     </tr>`;
   });
@@ -2430,6 +2539,9 @@ function renderLicenseTable() {
       <td>${urgencyBadge(days, l.expirationDate)}</td>
       <td>${statusBadge(l.renewalStatus)}</td>
       <td>${l.licenseHolder || ''}${restoreBtn ? ' '+restoreBtn : ''}</td>
+      <td onclick="event.stopPropagation()">${(l.licenseCopyUrl || l.licenseCopy)
+        ? '<button class="btn btn-sm btn-success" style="font-size:11px" onclick="viewLicenseDocument(\''+l.id+'\')">View</button>'
+        : '<span style="font-size:11px;color:var(--gray-400)">—</span>'}</td>
     </tr>`;
   }).join('');
 
@@ -2493,26 +2605,44 @@ function openLicenseDetail(id) {
   if (hasFile) {
     const ext = (l.licenseCopyName || '').split('.').pop().toLowerCase();
     const isImage = ['png','jpg','jpeg'].includes(ext);
-    const fileSource = l.licenseCopyUrl || l.licenseCopy;
     html += '<div class="detail-section"><h3>Current License Copy</h3>';
-    if (isImage && l.licenseCopy) {
-      html += `<div style="margin-bottom:8px"><img src="${l.licenseCopy}" style="max-width:100%;max-height:400px;border-radius:var(--radius);border:1px solid var(--gray-200);cursor:pointer" onclick="window.open(this.src,'_blank')"></div>`;
-    } else {
-      html += `<div style="display:flex;align-items:center;gap:12px;padding:12px;background:var(--gray-50);border-radius:var(--radius);border:1px solid var(--gray-200)">
-        <span style="font-size:32px">📄</span>
-        <div>
-          <strong>${escHtml(l.licenseCopyName || 'License copy')}</strong>
-          <div style="font-size:12px;color:var(--gray-400)">Uploaded ${formatDate(l.licenseCopyDate)}${l.licenseCopyUrl ? ' (SharePoint)' : ' (Local)'}</div>
-        </div>
-        <a href="${fileSource}" ${l.licenseCopy ? 'download="'+escHtml(l.licenseCopyName)+'"' : 'target="_blank"'} class="btn btn-sm btn-secondary" style="margin-left:auto">${l.licenseCopyUrl ? 'Open' : 'Download'}</a>
-      </div>`;
-    }
+    html += `<div style="display:flex;align-items:center;gap:12px;padding:12px;background:var(--gray-50);border-radius:var(--radius);border:1px solid var(--gray-200)">
+      <span style="font-size:32px">${isImage ? '🖼️' : '📄'}</span>
+      <div>
+        <strong>${escHtml(l.licenseCopyName || 'License copy')}</strong>
+        <div style="font-size:12px;color:var(--gray-400)">Uploaded ${formatDate(l.licenseCopyDate)}${l.licenseCopyUrl ? ' (SharePoint)' : ' (Local)'}</div>
+      </div>
+      <button class="btn btn-sm btn-success" style="margin-left:auto" onclick="viewLicenseDocument('${l.id}')">View Document</button>
+    </div>`;
     html += '</div>';
   }
 
   // Renewal Instructions
   if (l.renewalInstructions) {
     html += `<div class="detail-section"><h3>Renewal Instructions</h3><div style="font-size:14px;color:var(--gray-700);white-space:pre-wrap;background:var(--gray-50);padding:16px;border-radius:var(--radius);border:1px solid var(--gray-200);line-height:1.7">${escHtml(l.renewalInstructions)}</div></div>`;
+  }
+
+  // Renewal Documents (past applications, forms, etc.)
+  if (l.renewalDocs && l.renewalDocs.length) {
+    html += '<div class="detail-section"><h3>Renewal Documents &amp; Past Applications</h3>';
+    l.renewalDocs.forEach((d, idx) => {
+      const dUrl = d.url || d.dataUrl;
+      const dExt = (d.name || '').split('.').pop().toLowerCase();
+      const isImg = ['png','jpg','jpeg'].includes(dExt);
+      html += `<div style="display:flex;align-items:center;gap:12px;padding:10px 12px;background:var(--gray-50);border-radius:var(--radius);border:1px solid var(--gray-200);margin-bottom:6px">
+        <span style="font-size:24px">${isImg ? '🖼️' : dExt === 'pdf' ? '📋' : '📄'}</span>
+        <div style="flex:1;min-width:0">
+          <strong style="font-size:13px">${escHtml(d.label || d.name || 'Document')}</strong>
+          ${d.name && d.label ? '<div style="font-size:11px;color:var(--gray-400)">'+escHtml(d.name)+'</div>' : ''}
+          <div style="font-size:11px;color:var(--gray-400)">Added ${formatDate(d.date)}${d.url ? ' (SharePoint)' : ''}</div>
+        </div>
+        ${dUrl ? '<button class="btn btn-sm btn-success" onclick="viewRenewalDoc(\''+l.id+'\','+idx+')">View</button>' : ''}
+        ${dUrl ? (d.dataUrl
+          ? '<a href="'+dUrl+'" download="'+escHtml(d.name || 'document')+'" class="btn btn-sm btn-secondary">Download</a>'
+          : '<a href="'+dUrl+'" target="_blank" class="btn btn-sm btn-secondary">Open</a>') : ''}
+      </div>`;
+    });
+    html += '</div>';
   }
 
   if (l.notes) {
@@ -2544,6 +2674,7 @@ function openAddLicense() {
   document.getElementById('licenseForm').reset();
   document.getElementById('lic_editId').value = '';
   document.getElementById('lic_currentFilePreview').innerHTML = '';
+  document.getElementById('lic_renewalDocsPreview').innerHTML = '';
   document.getElementById('licFormDangerBtns').style.display = 'none';
   populateLicLocationSelect();
   openModal('licenseFormModal');
@@ -2571,6 +2702,7 @@ function openEditLicense(id) {
   document.getElementById('lic_password').value = l.boardPassword;
   document.getElementById('lic_notes').value = l.notes;
   document.getElementById('lic_renewalInstructions').value = l.renewalInstructions || '';
+  renderRenewalDocsPreview(l);
   // Show existing file preview if there's a license copy
   const preview = document.getElementById('lic_currentFilePreview');
   if (l.licenseCopy) {
@@ -2709,8 +2841,10 @@ async function saveLicense(e) {
         data.licenseCopyUrl = existing.licenseCopyUrl;
         data.licenseCopyName = existing.licenseCopyName;
         data.licenseCopyDate = existing.licenseCopyDate;
+        data.renewalDocs = existing.renewalDocs || [];
       }
     }
+    if (!data.renewalDocs) data.renewalDocs = [];
     finishSave(data, editId);
   }
 }
@@ -2748,6 +2882,10 @@ function renderPersonnelTable() {
       .sort((a,b) => new Date(a.expirationDate) - new Date(b.expirationDate))[0];
     const days = nextExp ? daysUntilExp(nextExp.expirationDate) : 999;
     const licLinks = p.licenses.map(l => '<span style="cursor:pointer;color:var(--primary);font-size:12px" onclick="clickLicense(\''+l.id+'\')">' + escHtml(l.state.substring(0,20)) + '</span>').join(', ');
+    const docBtns = p.licenses.filter(l => l.licenseCopyUrl || l.licenseCopy).map(l => {
+      return '<button class="btn btn-sm btn-success" style="font-size:10px;margin:2px;padding:2px 6px" onclick="viewLicenseDocument(\''+l.id+'\')">'
+        + escHtml(l.state.substring(0,12)) + '</button>';
+    }).join('');
     const uploadBtns = canEdit() ? p.licenses.map(l => {
       const hasFile = l.licenseCopyUrl || l.licenseCopy;
       return '<label class="btn btn-sm btn-'+(hasFile ? 'secondary' : 'primary')+'" style="font-size:10px;cursor:pointer;margin:2px;padding:2px 6px">'
@@ -2762,7 +2900,7 @@ function renderPersonnelTable() {
       <td>${licLinks}</td>
       <td>${nextExp ? formatDate(nextExp.expirationDate) : 'N/A'}</td>
       <td>${urgencyBadge(days, nextExp ? nextExp.expirationDate : '')}</td>
-      <td style="white-space:nowrap">${uploadBtns}</td>
+      <td style="white-space:nowrap">${docBtns}${uploadBtns}</td>
     </tr>`;
   }).join('');
 
@@ -2771,15 +2909,37 @@ function renderPersonnelTable() {
 
 // ===== INSPECTIONS =====
 function openAddInspection() {
+  document.getElementById('inspFormTitle').textContent = 'Add Inspection / Audit';
   document.getElementById('inspectionForm').reset();
+  document.getElementById('insp_editId').value = '';
+  document.getElementById('insp_docsPreview').innerHTML = '';
   populateInspLocationSelect();
+  openModal('inspectionFormModal');
+}
+
+function openEditInspection(id) {
+  const insp = inspections.find(i => String(i.id) === String(id));
+  if (!insp) return;
+  document.getElementById('inspFormTitle').textContent = 'Edit Inspection / Audit';
+  document.getElementById('inspectionForm').reset();
+  document.getElementById('insp_editId').value = insp.id;
+  populateInspLocationSelect();
+  document.getElementById('insp_location').value = insp.location;
+  document.getElementById('insp_type').value = insp.type;
+  document.getElementById('insp_date').value = insp.date;
+  document.getElementById('insp_result').value = insp.result;
+  document.getElementById('insp_inspector').value = insp.inspector || '';
+  document.getElementById('insp_license').value = insp.relatedLicense || '';
+  document.getElementById('insp_notes').value = insp.notes || '';
+  document.getElementById('insp_followup').value = insp.followupDate || '';
+  renderInspDocsPreview(insp);
   openModal('inspectionFormModal');
 }
 
 async function saveInspection(e) {
   e.preventDefault();
-  const insp = {
-    id: inspections.length ? Math.max(...inspections.map(i => typeof i.id === 'number' ? i.id : 0)) + 1 : 1,
+  const editId = document.getElementById('insp_editId').value;
+  const data = {
     location: document.getElementById('insp_location').value,
     type: document.getElementById('insp_type').value,
     date: document.getElementById('insp_date').value,
@@ -2789,11 +2949,23 @@ async function saveInspection(e) {
     notes: document.getElementById('insp_notes').value,
     followupDate: document.getElementById('insp_followup').value
   };
-  inspections.push(insp);
-  await spSaveInspection(insp);
+  if (editId) {
+    const idx = inspections.findIndex(i => String(i.id) === String(editId));
+    if (idx >= 0) {
+      data.inspDocs = inspections[idx].inspDocs || [];
+      inspections[idx] = { ...inspections[idx], ...data };
+      await spSaveInspection(inspections[idx]);
+    }
+  } else {
+    data.id = inspections.length ? Math.max(...inspections.map(i => typeof i.id === 'number' ? i.id : 0)) + 1 : 1;
+    data.inspDocs = [];
+    inspections.push(data);
+    await spSaveInspection(data);
+  }
+  saveLocalCache();
   closeModal('inspectionFormModal');
   renderInspections();
-  showToast('Inspection added', 'success');
+  showToast(editId ? 'Inspection updated' : 'Inspection added', 'success');
 }
 
 function renderInspections() {
@@ -2808,20 +2980,36 @@ function renderInspections() {
 
   document.getElementById('noInspections').style.display = filtered.length ? 'none' : 'block';
 
-  document.getElementById('inspectionsList').innerHTML = filtered.map(i => `
-    <div class="insp-card">
+  document.getElementById('inspectionsList').innerHTML = filtered.map(i => {
+    const docs = i.inspDocs || [];
+    const docsHtml = docs.length ? '<div style="margin-top:8px;border-top:1px solid var(--gray-200);padding-top:8px"><div style="font-size:12px;font-weight:600;color:var(--gray-500);margin-bottom:4px">Attached Documents</div>'
+      + docs.map((d, idx) => {
+        const dExt = (d.name || '').split('.').pop().toLowerCase();
+        const dUrl = d.url || d.dataUrl;
+        return '<div style="display:flex;align-items:center;gap:8px;padding:4px 8px;background:white;border-radius:var(--radius);border:1px solid var(--gray-200);margin-bottom:3px;font-size:12px">'
+          + '<span>'+(dExt === 'pdf' ? '📋' : ['png','jpg','jpeg'].includes(dExt) ? '🖼️' : '📄')+'</span>'
+          + '<strong style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+escHtml(d.label || d.name)+'</strong>'
+          + '<span style="color:var(--gray-400)">'+formatDate(d.date)+'</span>'
+          + (dUrl ? '<button class="btn btn-sm btn-success" style="font-size:10px;padding:2px 6px" onclick="viewInspDoc(\''+i.id+'\','+idx+')">View</button>' : '')
+          + '</div>';
+      }).join('') + '</div>' : '';
+    return `<div class="insp-card">
       <div class="insp-header">
         <div>
           <strong>${i.type}</strong> - ${i.location}
           <div style="font-size:12px;color:var(--gray-500)">${formatDate(i.date)} ${i.inspector ? '| ' + i.inspector : ''}</div>
         </div>
-        <span class="insp-result insp-${i.result.toLowerCase()}">${i.result}</span>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span class="insp-result insp-${i.result.toLowerCase()}">${i.result}</span>
+          ${canEdit() ? '<button class="btn btn-sm btn-secondary" style="font-size:11px" onclick="openEditInspection(\''+i.id+'\')">Edit</button>' : ''}
+        </div>
       </div>
       ${i.relatedLicense ? '<div style="font-size:13px;margin-bottom:4px">Related License: <strong>'+i.relatedLicense+'</strong></div>' : ''}
       ${i.notes ? '<div style="font-size:13px;color:var(--gray-600)">'+escHtml(i.notes)+'</div>' : ''}
       ${i.followupDate ? '<div style="font-size:12px;color:var(--warning);margin-top:4px">Follow-up: '+formatDate(i.followupDate)+'</div>' : ''}
-    </div>
-  `).join('');
+      ${docsHtml}
+    </div>`;
+  }).join('');
 }
 
 // ===== DOCUMENTS =====
@@ -3562,6 +3750,433 @@ function devBypass() {
   renderAll();
   renderUserTable();
   updateSpStatus();
+}
+
+// ===== INSPECTION DOCUMENTS =====
+function renderInspDocsPreview(insp) {
+  const container = document.getElementById('insp_docsPreview');
+  if (!insp || !insp.inspDocs || !insp.inspDocs.length) {
+    container.innerHTML = '<div style="font-size:12px;color:var(--gray-400);padding:4px 0">No documents attached yet</div>';
+    return;
+  }
+  container.innerHTML = insp.inspDocs.map((d, idx) => {
+    const dExt = (d.name || '').split('.').pop().toLowerCase();
+    return `<div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:var(--gray-50);border-radius:var(--radius);border:1px solid var(--gray-200);margin-bottom:4px;font-size:13px">
+      <span>${dExt === 'pdf' ? '📋' : ['png','jpg','jpeg'].includes(dExt) ? '🖼️' : '📄'}</span>
+      <div style="flex:1;min-width:0">
+        <strong>${escHtml(d.label || d.name || 'Document')}</strong>
+        ${d.name && d.label ? ' <span style="color:var(--gray-400);font-size:11px">('+escHtml(d.name)+')</span>' : ''}
+        <span style="color:var(--gray-400);font-size:11px;margin-left:8px">${formatDate(d.date)}</span>
+      </div>
+      <button type="button" class="btn btn-sm" style="font-size:11px;color:var(--danger);background:none;border:none;padding:2px 6px" onclick="removeInspDoc(${idx})">Remove</button>
+    </div>`;
+  }).join('');
+}
+
+async function addInspDoc() {
+  const editId = document.getElementById('insp_editId').value;
+  const fileInput = document.getElementById('insp_docFile');
+  const labelInput = document.getElementById('insp_docLabel');
+  const files = fileInput.files;
+
+  if (!files.length) {
+    showToast('Select a file to add', 'error');
+    return;
+  }
+
+  let insp;
+  if (editId) {
+    insp = inspections.find(i => String(i.id) === String(editId));
+  }
+  if (!insp) {
+    showToast('Save the inspection first, then edit it to add documents', 'info');
+    return;
+  }
+  if (!insp.inspDocs) insp.inspDocs = [];
+
+  const label = labelInput.value.trim();
+
+  for (const file of files) {
+    if (file.size > 10 * 1024 * 1024) {
+      showToast(file.name + ' is too large (10MB max)', 'error');
+      continue;
+    }
+
+    const doc = {
+      name: file.name,
+      label: label || file.name,
+      date: new Date().toISOString().split('T')[0]
+    };
+
+    if (spConnected && spDriveId) {
+      const folder = 'InspectionDocs/' + (insp.location || 'General').replace(/[^a-zA-Z0-9]/g, '_') + '/' + String(insp.id);
+      const url = await spUploadFile(folder, file.name, file, file.type);
+      if (url) {
+        doc.url = url;
+      } else {
+        doc.dataUrl = await readFileAsDataUrl(file);
+      }
+    } else {
+      doc.dataUrl = await readFileAsDataUrl(file);
+    }
+
+    insp.inspDocs.push(doc);
+  }
+
+  await spSaveInspection(insp);
+  saveLocalCache();
+  renderInspDocsPreview(insp);
+  fileInput.value = '';
+  labelInput.value = '';
+  showToast(files.length > 1 ? files.length + ' documents added' : 'Document added', 'success');
+}
+
+function removeInspDoc(idx) {
+  const editId = document.getElementById('insp_editId').value;
+  if (!editId) return;
+  const insp = inspections.find(i => String(i.id) === String(editId));
+  if (!insp || !insp.inspDocs) return;
+  const doc = insp.inspDocs[idx];
+  if (!confirm('Remove "' + (doc.label || doc.name) + '"?')) return;
+  insp.inspDocs.splice(idx, 1);
+  spSaveInspection(insp);
+  saveLocalCache();
+  renderInspDocsPreview(insp);
+  showToast('Document removed', 'success');
+}
+
+function viewInspDoc(inspId, docIdx) {
+  const insp = inspections.find(i => String(i.id) === String(inspId));
+  if (!insp || !insp.inspDocs || !insp.inspDocs[docIdx]) return;
+  const d = insp.inspDocs[docIdx];
+  const fileSource = d.url || d.dataUrl;
+  if (!fileSource) { showToast('No file available', 'error'); return; }
+
+  const ext = (d.name || '').split('.').pop().toLowerCase();
+  const isImage = ['png','jpg','jpeg'].includes(ext);
+  const isPdf = ext === 'pdf';
+  const fileName = d.name || 'document.' + ext;
+
+  document.getElementById('docViewerTitle').textContent = (d.label || d.name) + ' — ' + insp.type + ' (' + insp.location + ')';
+
+  const dlBtn = document.getElementById('docViewerDownload');
+  dlBtn.href = fileSource;
+  if (d.dataUrl) {
+    dlBtn.setAttribute('download', fileName);
+    dlBtn.removeAttribute('target');
+  } else {
+    dlBtn.removeAttribute('download');
+    dlBtn.setAttribute('target', '_blank');
+  }
+  dlBtn.textContent = d.url ? 'Open in SharePoint' : 'Download';
+
+  const content = document.getElementById('docViewerContent');
+  if (isImage) {
+    content.innerHTML = '<img src="'+fileSource+'" alt="'+escHtml(fileName)+'" style="max-width:100%;max-height:70vh;object-fit:contain;padding:20px">';
+  } else if (isPdf) {
+    content.innerHTML = '<iframe src="'+fileSource+'" style="width:100%;min-height:600px;border:none"></iframe>';
+  } else {
+    content.innerHTML = '<div style="text-align:center;padding:60px"><div style="font-size:64px;margin-bottom:16px">📄</div><div style="font-size:16px;font-weight:600;margin-bottom:8px">'+escHtml(fileName)+'</div><div style="font-size:13px;color:var(--gray-500);margin-bottom:20px">This file type cannot be previewed in the browser.</div><a href="'+fileSource+'" '+(d.dataUrl ? 'download="'+escHtml(fileName)+'"' : 'target="_blank"')+' class="btn btn-primary">'+(d.url ? 'Open in SharePoint' : 'Download File')+'</a></div>';
+  }
+
+  const details = document.getElementById('docViewerDetails');
+  details.style.display = 'block';
+  details.innerHTML = '<div class="detail-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px 20px;font-size:13px">'
+    + '<div><strong style="color:var(--gray-500)">Inspection:</strong> '+escHtml(insp.type)+'</div>'
+    + '<div><strong style="color:var(--gray-500)">Location:</strong> '+escHtml(insp.location)+'</div>'
+    + '<div><strong style="color:var(--gray-500)">Date:</strong> '+formatDate(insp.date)+'</div>'
+    + '<div><strong style="color:var(--gray-500)">Result:</strong> '+escHtml(insp.result)+'</div>'
+    + '<div><strong style="color:var(--gray-500)">Document:</strong> '+escHtml(d.label || d.name)+'</div>'
+    + '<div><strong style="color:var(--gray-500)">Added:</strong> '+formatDate(d.date)+'</div>'
+    + '</div>';
+
+  openModal('docViewerModal');
+}
+
+// ===== RENEWAL DOCUMENTS =====
+function renderRenewalDocsPreview(lic) {
+  const container = document.getElementById('lic_renewalDocsPreview');
+  if (!lic || !lic.renewalDocs || !lic.renewalDocs.length) {
+    container.innerHTML = '<div style="font-size:12px;color:var(--gray-400);padding:4px 0">No renewal documents attached yet</div>';
+    return;
+  }
+  container.innerHTML = lic.renewalDocs.map((d, idx) => {
+    const dExt = (d.name || '').split('.').pop().toLowerCase();
+    return `<div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:var(--gray-50);border-radius:var(--radius);border:1px solid var(--gray-200);margin-bottom:4px;font-size:13px">
+      <span>${dExt === 'pdf' ? '📋' : ['png','jpg','jpeg'].includes(dExt) ? '🖼️' : '📄'}</span>
+      <div style="flex:1;min-width:0">
+        <strong>${escHtml(d.label || d.name || 'Document')}</strong>
+        ${d.name && d.label ? ' <span style="color:var(--gray-400);font-size:11px">('+escHtml(d.name)+')</span>' : ''}
+        <span style="color:var(--gray-400);font-size:11px;margin-left:8px">${formatDate(d.date)}</span>
+      </div>
+      <button type="button" class="btn btn-sm" style="font-size:11px;color:var(--danger);background:none;border:none;padding:2px 6px" onclick="removeRenewalDoc(${idx})">Remove</button>
+    </div>`;
+  }).join('');
+}
+
+async function addRenewalDoc() {
+  const editId = document.getElementById('lic_editId').value;
+  const fileInput = document.getElementById('lic_renewalDocFile');
+  const notesInput = document.getElementById('lic_renewalDocNotes');
+  const files = fileInput.files;
+
+  if (!files.length) {
+    showToast('Select a file to add', 'error');
+    return;
+  }
+
+  // Need to be editing an existing license to attach docs
+  let lic;
+  if (editId) {
+    lic = licenses.find(l => String(l.id) === String(editId));
+  }
+  if (!lic) {
+    showToast('Save the license first, then edit it to add renewal documents', 'info');
+    return;
+  }
+  if (!lic.renewalDocs) lic.renewalDocs = [];
+
+  const label = notesInput.value.trim();
+
+  for (const file of files) {
+    if (file.size > 10 * 1024 * 1024) {
+      showToast(file.name + ' is too large (10MB max)', 'error');
+      continue;
+    }
+
+    const doc = {
+      name: file.name,
+      label: label || file.name,
+      date: new Date().toISOString().split('T')[0]
+    };
+
+    if (spConnected && spDriveId) {
+      const folder = 'RenewalDocs/' + (lic.location || 'General').replace(/[^a-zA-Z0-9]/g, '_') + '/' + String(lic.id);
+      const url = await spUploadFile(folder, file.name, file, file.type);
+      if (url) {
+        doc.url = url;
+      } else {
+        // Fallback to base64
+        const dataUrl = await readFileAsDataUrl(file);
+        doc.dataUrl = dataUrl;
+      }
+    } else {
+      const dataUrl = await readFileAsDataUrl(file);
+      doc.dataUrl = dataUrl;
+    }
+
+    lic.renewalDocs.push(doc);
+  }
+
+  await spSaveLicense(lic);
+  saveLocalCache();
+  renderRenewalDocsPreview(lic);
+  fileInput.value = '';
+  notesInput.value = '';
+  showToast(files.length > 1 ? files.length + ' documents added' : 'Document added', 'success');
+}
+
+function readFileAsDataUrl(file) {
+  return new Promise(resolve => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.readAsDataURL(file);
+  });
+}
+
+function removeRenewalDoc(idx) {
+  const editId = document.getElementById('lic_editId').value;
+  if (!editId) return;
+  const lic = licenses.find(l => String(l.id) === String(editId));
+  if (!lic || !lic.renewalDocs) return;
+  const doc = lic.renewalDocs[idx];
+  if (!confirm('Remove "' + (doc.label || doc.name) + '"?')) return;
+  lic.renewalDocs.splice(idx, 1);
+  spSaveLicense(lic);
+  saveLocalCache();
+  renderRenewalDocsPreview(lic);
+  showToast('Document removed', 'success');
+}
+
+function viewRenewalDoc(licId, docIdx) {
+  const l = licenses.find(x => String(x.id) === String(licId));
+  if (!l || !l.renewalDocs || !l.renewalDocs[docIdx]) return;
+  const d = l.renewalDocs[docIdx];
+  const fileSource = d.url || d.dataUrl;
+  if (!fileSource) { showToast('No file available', 'error'); return; }
+
+  const ext = (d.name || '').split('.').pop().toLowerCase();
+  const isImage = ['png','jpg','jpeg'].includes(ext);
+  const isPdf = ext === 'pdf';
+  const fileName = d.name || 'document.' + ext;
+
+  document.getElementById('docViewerTitle').textContent = (d.label || d.name) + ' — ' + l.state;
+
+  const dlBtn = document.getElementById('docViewerDownload');
+  dlBtn.href = fileSource;
+  if (d.dataUrl) {
+    dlBtn.setAttribute('download', fileName);
+    dlBtn.removeAttribute('target');
+  } else {
+    dlBtn.removeAttribute('download');
+    dlBtn.setAttribute('target', '_blank');
+  }
+  dlBtn.textContent = d.url ? 'Open in SharePoint' : 'Download';
+
+  const content = document.getElementById('docViewerContent');
+  if (isImage) {
+    content.innerHTML = '<img src="'+fileSource+'" alt="'+escHtml(fileName)+'" style="max-width:100%;max-height:70vh;object-fit:contain;padding:20px">';
+  } else if (isPdf) {
+    content.innerHTML = '<iframe src="'+fileSource+'" style="width:100%;min-height:600px;border:none"></iframe>';
+  } else {
+    content.innerHTML = '<div style="text-align:center;padding:60px"><div style="font-size:64px;margin-bottom:16px">📄</div><div style="font-size:16px;font-weight:600;margin-bottom:8px">'+escHtml(fileName)+'</div><div style="font-size:13px;color:var(--gray-500);margin-bottom:20px">This file type cannot be previewed in the browser.</div><a href="'+fileSource+'" '+(d.dataUrl ? 'download="'+escHtml(fileName)+'"' : 'target="_blank"')+' class="btn btn-primary">'+(d.url ? 'Open in SharePoint' : 'Download File')+'</a></div>';
+  }
+
+  const details = document.getElementById('docViewerDetails');
+  details.style.display = 'block';
+  details.innerHTML = '<div class="detail-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px 20px;font-size:13px">'
+    + '<div><strong style="color:var(--gray-500)">License:</strong> '+escHtml(l.state)+'</div>'
+    + '<div><strong style="color:var(--gray-500)">Location:</strong> '+escHtml(l.location)+'</div>'
+    + '<div><strong style="color:var(--gray-500)">Document:</strong> '+escHtml(d.label || d.name)+'</div>'
+    + '<div><strong style="color:var(--gray-500)">File:</strong> '+escHtml(d.name || 'N/A')+'</div>'
+    + '<div><strong style="color:var(--gray-500)">Added:</strong> '+formatDate(d.date)+'</div>'
+    + (d.url ? '<div><strong style="color:var(--gray-500)">Storage:</strong> SharePoint</div>' : '')
+    + '</div>';
+
+  openModal('docViewerModal');
+}
+
+// ===== DOCUMENT VIEWER =====
+function openDocSearch() {
+  openModal('docSearchModal');
+  const input = document.getElementById('docSearchInput');
+  input.value = '';
+  input.focus();
+  renderDocSearchResults();
+}
+
+function renderDocSearchResults() {
+  const q = (document.getElementById('docSearchInput').value || '').toLowerCase().trim();
+  const container = document.getElementById('docSearchResults');
+
+  let filtered = licenses.filter(l => !l.archived && canViewLocation(l.location));
+  if (q) {
+    filtered = filtered.filter(l =>
+      (l.state + ' ' + l.licenseNumber + ' ' + l.location + ' ' + (l.licenseHolder || '') + ' ' + l.type).toLowerCase().includes(q)
+    );
+  }
+  filtered.sort((a, b) => a.state.localeCompare(b.state));
+
+  if (!filtered.length) {
+    container.innerHTML = '<div class="empty-state" style="padding:24px">No licenses found</div>';
+    return;
+  }
+
+  container.innerHTML = filtered.slice(0, 50).map(l => {
+    const hasFile = l.licenseCopyUrl || l.licenseCopy;
+    const days = daysUntilExp(l.expirationDate);
+    return `<div class="doc-search-item">
+      <div class="item-info">
+        <div class="item-name">${escHtml(l.state)}</div>
+        <div class="item-meta">${escHtml(l.location)} &middot; ${l.licenseNumber || 'No #'} &middot; ${l.type} ${l.expirationDate ? '&middot; Exp: ' + formatDate(l.expirationDate) + ' ' + urgencyBadge(days, l.expirationDate) : ''}</div>
+      </div>
+      <div class="item-actions">
+        ${hasFile
+          ? '<button class="btn btn-sm btn-success" onclick="closeModal(\'docSearchModal\');viewLicenseDocument(\''+l.id+'\')">View Document</button>'
+          : '<span style="font-size:11px;color:var(--gray-400);padding:4px 8px">No document</span>'
+        }
+        <button class="btn btn-sm btn-secondary" onclick="closeModal(\'docSearchModal\');clickLicense(\''+l.id+'\')">Details</button>
+      </div>
+    </div>`;
+  }).join('') + (filtered.length > 50 ? '<div style="padding:12px;text-align:center;font-size:13px;color:var(--gray-500)">Showing 50 of '+filtered.length+' — refine your search</div>' : '');
+}
+
+function viewLicenseDocument(id) {
+  const l = licenses.find(x => String(x.id) === String(id));
+  if (!l) return;
+
+  const fileSource = l.licenseCopyUrl || l.licenseCopy;
+  if (!fileSource) {
+    showToast('No document uploaded for this license', 'error');
+    return;
+  }
+
+  const ext = (l.licenseCopyName || '').split('.').pop().toLowerCase();
+  const isImage = ['png', 'jpg', 'jpeg'].includes(ext);
+  const isPdf = ext === 'pdf';
+  const fileName = l.licenseCopyName || 'license.' + ext;
+
+  // Title
+  document.getElementById('docViewerTitle').textContent = l.state + ' — ' + l.location;
+
+  // Download button
+  const dlBtn = document.getElementById('docViewerDownload');
+  dlBtn.href = fileSource;
+  if (l.licenseCopy) {
+    dlBtn.setAttribute('download', fileName);
+    dlBtn.removeAttribute('target');
+  } else {
+    dlBtn.removeAttribute('download');
+    dlBtn.setAttribute('target', '_blank');
+  }
+  dlBtn.textContent = l.licenseCopyUrl ? 'Open in SharePoint' : 'Download';
+
+  // Content area
+  const content = document.getElementById('docViewerContent');
+  if (isImage) {
+    content.innerHTML = `<img src="${fileSource}" alt="${escHtml(fileName)}" style="max-width:100%;max-height:70vh;object-fit:contain;padding:20px">`;
+  } else if (isPdf && l.licenseCopy) {
+    // Base64 PDF — embed
+    content.innerHTML = `<iframe src="${fileSource}" style="width:100%;min-height:600px;border:none"></iframe>`;
+  } else if (isPdf && l.licenseCopyUrl) {
+    // SharePoint PDF — try embed, fallback message
+    content.innerHTML = `<iframe src="${fileSource}" style="width:100%;min-height:600px;border:none"></iframe>`;
+  } else {
+    // Other file types (doc, docx, etc.)
+    content.innerHTML = `<div style="text-align:center;padding:60px">
+      <div style="font-size:64px;margin-bottom:16px">📄</div>
+      <div style="font-size:16px;font-weight:600;margin-bottom:8px">${escHtml(fileName)}</div>
+      <div style="font-size:13px;color:var(--gray-500);margin-bottom:20px">This file type cannot be previewed in the browser.</div>
+      <a href="${fileSource}" ${l.licenseCopy ? 'download="'+escHtml(fileName)+'"' : 'target="_blank"'} class="btn btn-primary">${l.licenseCopyUrl ? 'Open in SharePoint' : 'Download File'}</a>
+    </div>`;
+  }
+
+  // License details
+  const details = document.getElementById('docViewerDetails');
+  const days = daysUntilExp(l.expirationDate);
+  details.style.display = 'block';
+  details.innerHTML = `<div class="detail-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px 20px;font-size:13px">
+    <div><strong style="color:var(--gray-500)">Location:</strong> ${escHtml(l.location)}</div>
+    <div><strong style="color:var(--gray-500)">License #:</strong> <code>${escHtml(l.licenseNumber || 'N/A')}</code></div>
+    <div><strong style="color:var(--gray-500)">Type:</strong> ${l.type}</div>
+    <div><strong style="color:var(--gray-500)">Expiration:</strong> ${formatDate(l.expirationDate) || 'N/A'} ${urgencyBadge(days, l.expirationDate)}</div>
+    <div><strong style="color:var(--gray-500)">Holder:</strong> ${escHtml(l.licenseHolder || 'N/A')}</div>
+    <div><strong style="color:var(--gray-500)">Status:</strong> ${statusBadge(l.renewalStatus) || '<span class="status-badge status-current">Current</span>'}</div>
+    ${l.licenseCopyDate ? '<div><strong style="color:var(--gray-500)">Uploaded:</strong> '+formatDate(l.licenseCopyDate)+(l.licenseCopyUrl ? ' (SharePoint)' : ' (Local)')+'</div>' : ''}
+  </div>`;
+
+  openModal('docViewerModal');
+}
+
+function printLicenseDoc() {
+  const content = document.getElementById('docViewerContent');
+  const img = content.querySelector('img');
+  const iframe = content.querySelector('iframe');
+
+  if (iframe) {
+    try { iframe.contentWindow.print(); } catch(e) {
+      // Cross-origin — open in new window for printing
+      window.open(iframe.src, '_blank');
+    }
+  } else if (img) {
+    const w = window.open('', '_blank');
+    w.document.write('<html><head><title>Print License</title><style>body{margin:0;display:flex;justify-content:center;align-items:center;min-height:100vh}img{max-width:100%;max-height:100vh}</style></head><body>');
+    w.document.write('<img src="'+img.src+'" onload="window.print();window.close()">');
+    w.document.write('</body></html>');
+    w.document.close();
+  } else {
+    showToast('Open the file first to print', 'info');
+  }
 }
 
 // Check if MSAL is unavailable (local dev), auto-bypass
