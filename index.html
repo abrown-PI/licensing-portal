@@ -306,6 +306,7 @@
     <button class="nav-tab" data-page="inspections">Inspections</button>
     <button class="nav-tab" data-page="documents">Documents</button>
     <button class="nav-tab admin-only-tab" data-page="users" style="display:none">User Management</button>
+    <button class="nav-tab admin-only-tab" data-page="audit" style="display:none">Audit Log</button>
   </div>
   <button class="view-license-btn" onclick="openDocSearch()" title="Quick search and view any license document">
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
@@ -681,6 +682,70 @@
             <tbody id="userTableBody"></tbody>
           </table>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="page" id="page-audit">
+    <div class="card">
+      <div class="card-header">
+        <h2>Audit Log</h2>
+        <button class="btn btn-sm btn-secondary" onclick="loadAuditLog()">Refresh</button>
+      </div>
+      <div class="card-body">
+        <p style="font-size:13px;color:var(--gray-500);margin-bottom:12px">Every create, update, archive, and delete across licenses, users, inspections, and locations. Newest first.</p>
+        <div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:14px;align-items:end">
+          <div class="form-group" style="margin:0">
+            <label style="font-size:12px">From</label>
+            <input type="date" id="auditFrom" onchange="renderAuditLog()" style="padding:6px 8px;font-size:13px">
+          </div>
+          <div class="form-group" style="margin:0">
+            <label style="font-size:12px">To</label>
+            <input type="date" id="auditTo" onchange="renderAuditLog()" style="padding:6px 8px;font-size:13px">
+          </div>
+          <div class="form-group" style="margin:0">
+            <label style="font-size:12px">User</label>
+            <select id="auditUser" onchange="renderAuditLog()" style="padding:6px 8px;font-size:13px"><option value="">All users</option></select>
+          </div>
+          <div class="form-group" style="margin:0">
+            <label style="font-size:12px">Type</label>
+            <select id="auditType" onchange="renderAuditLog()" style="padding:6px 8px;font-size:13px">
+              <option value="">All types</option>
+              <option value="license">License</option>
+              <option value="user">User</option>
+              <option value="inspection">Inspection</option>
+              <option value="location">Location</option>
+            </select>
+          </div>
+          <div class="form-group" style="margin:0">
+            <label style="font-size:12px">Action</label>
+            <select id="auditAction" onchange="renderAuditLog()" style="padding:6px 8px;font-size:13px">
+              <option value="">All actions</option>
+              <option value="create">Create</option>
+              <option value="update">Update</option>
+              <option value="archive">Archive</option>
+              <option value="restore">Restore</option>
+              <option value="delete">Delete</option>
+            </select>
+          </div>
+          <button class="btn btn-sm btn-secondary" onclick="clearAuditFilters()" style="height:32px">Clear</button>
+        </div>
+        <div class="table-responsive">
+          <table class="data-table" id="auditTable">
+            <thead>
+              <tr>
+                <th style="width:170px">When</th>
+                <th style="width:180px">Who</th>
+                <th style="width:90px">Action</th>
+                <th style="width:100px">Type</th>
+                <th>Item</th>
+                <th>Change</th>
+              </tr>
+            </thead>
+            <tbody id="auditTableBody"></tbody>
+          </table>
+        </div>
+        <div id="auditEmpty" style="text-align:center;padding:40px;color:var(--gray-500);display:none">No audit entries match the current filters.</div>
       </div>
     </div>
   </div>
@@ -1132,6 +1197,7 @@ const SP_LIST_LICENSES = 'Licensing_Licenses';
 const SP_LIST_INSPECTIONS = 'Licensing_Inspections';
 const SP_LIST_DOCUMENTS = 'Licensing_Documents';
 const SP_LIST_USERS = 'Licensing_UserRoles';
+const SP_LIST_AUDIT = 'Licensing_AuditLog';
 const SP_DOC_LIBRARY = 'Licensing_Files';
 const SP_CFG_KEY = 'licensing_sp_config';
 const GRAPH_BASE = 'https://graph.microsoft.com/v1.0';
@@ -1158,6 +1224,7 @@ let LOCATIONS = [
 let licenses = [];
 let inspections = [];
 let documents = [];
+let auditEntries = []; // loaded on demand when audit tab is opened
 let currentLicenseId = null;
 let sortField = 'expirationDate';
 let sortDir = 1;
@@ -1621,7 +1688,7 @@ async function spConnect() {
     spSiteId = siteData.id;
 
     // Resolve list IDs
-    for (const listName of [SP_LIST_LICENSES, SP_LIST_INSPECTIONS, SP_LIST_DOCUMENTS, SP_LIST_USERS]) {
+    for (const listName of [SP_LIST_LICENSES, SP_LIST_INSPECTIONS, SP_LIST_DOCUMENTS, SP_LIST_USERS, SP_LIST_AUDIT]) {
       try {
         const listResp = await fetch(`${GRAPH_BASE}/sites/${spSiteId}/lists/${encodeURIComponent(listName)}`, { headers: { Authorization: `Bearer ${token}` } });
         if (listResp.ok) {
@@ -1711,6 +1778,16 @@ async function spCreateLists() {
       { name: 'Role', text: {} },
       { name: 'Locations', text: {} },
       { name: 'ADOfficeLocation', text: {} }
+    ]},
+    { displayName: SP_LIST_AUDIT, columns: [
+      { name: 'Timestamp', text: {} },
+      { name: 'UserEmail', text: {} },
+      { name: 'UserName', text: {} },
+      { name: 'Action', text: {} },
+      { name: 'EntityType', text: {} },
+      { name: 'EntityName', text: {} },
+      { name: 'EntityId', text: {} },
+      { name: 'Summary', text: { allowMultipleLines: true } }
     ]}
   ];
 
@@ -2087,6 +2164,57 @@ async function spSaveDocument(doc) {
   return ok;
 }
 
+// ===== AUDIT LOG =====
+// Fire-and-forget — audit write failure must never block the user's actual save.
+async function logAudit(action, entityType, entityName, summary, entityId) {
+  if (!spConnected || !spListIds[SP_LIST_AUDIT]) return;
+  const actor = signedInUser || {};
+  const fields = {
+    Title: (action + ' ' + entityType + ' — ' + (entityName || '')).substring(0, 255),
+    Timestamp: new Date().toISOString(),
+    UserEmail: (actor.email || '').toLowerCase(),
+    UserName: actor.name || '',
+    Action: action || '',
+    EntityType: entityType || '',
+    EntityName: entityName || '',
+    EntityId: entityId != null ? String(entityId) : '',
+    Summary: summary || ''
+  };
+  try {
+    const token = await getToken();
+    const listId = spListIds[SP_LIST_AUDIT];
+    if (!token || !listId) return;
+    await fetch(`${GRAPH_BASE}/sites/${spSiteId}/lists/${listId}/items`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fields })
+    });
+  } catch(e) { console.warn('Audit log write failed:', e); }
+}
+
+// Build a short human-readable diff between two records.
+function diffRecord(before, after, skip) {
+  if (!before) return '';
+  const skipKeys = new Set(skip || ['id', 'spItemId', 'licenseCopy', 'renewalDocs', 'requirements', 'inspDocs']);
+  const parts = [];
+  const keys = new Set([...Object.keys(before), ...Object.keys(after)]);
+  for (const k of keys) {
+    if (skipKeys.has(k)) continue;
+    const b = before[k], a = after[k];
+    if (b === a) continue;
+    if (b == null && (a === '' || a == null)) continue;
+    if (a == null && (b === '' || b == null)) continue;
+    parts.push(`${k}: ${formatDiffVal(b)} → ${formatDiffVal(a)}`);
+  }
+  return parts.join('; ');
+}
+function formatDiffVal(v) {
+  if (v == null || v === '') return '∅';
+  if (typeof v === 'boolean') return v ? 'true' : 'false';
+  const s = String(v);
+  return s.length > 60 ? s.substring(0, 60) + '…' : s;
+}
+
 // ===== MIGRATE LOCAL DATA TO SHAREPOINT =====
 async function migrateToSharePoint() {
   if (!spConnected) {
@@ -2353,6 +2481,7 @@ function setupNavigation() {
       document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
       tab.classList.add('active');
       document.getElementById('page-' + tab.dataset.page).classList.add('active');
+      if (tab.dataset.page === 'audit') loadAuditLog();
     });
   });
 }
@@ -2997,6 +3126,7 @@ async function archiveLicense() {
   l.archived = true;
   await spSaveLicense(l);
   saveLocalCache();
+  logAudit('archive', 'license', licDisplayName(l) + ' (' + l.location + ')', '', l.spItemId || l.id);
   closeModal('licenseFormModal');
   renderAll();
   showToast('License archived', 'success');
@@ -3008,6 +3138,7 @@ async function unarchiveLicense(id) {
   l.archived = false;
   await spSaveLicense(l);
   saveLocalCache();
+  logAudit('restore', 'license', licDisplayName(l) + ' (' + l.location + ')', '', l.spItemId || l.id);
   renderAll();
   renderLicenseTable();
   showToast('License restored', 'success');
@@ -3022,8 +3153,11 @@ async function deleteLicense() {
   if (spConnected && l.spItemId) {
     await spDeleteItem(SP_LIST_LICENSES, l.spItemId);
   }
+  const name = licDisplayName(l) + ' (' + l.location + ')';
+  const spId = l.spItemId || l.id;
   licenses = licenses.filter(x => String(x.id) !== String(editId));
   saveLocalCache();
+  logAudit('delete', 'license', name, '', spId);
   closeModal('licenseFormModal');
   renderAll();
   showToast('License deleted', 'success');
@@ -3058,20 +3192,33 @@ async function saveLicense(e) {
 
   async function finishSave(data, editId) {
     let ok = true;
+    let auditAction = '', auditSummary = '', auditName = '', auditId = '';
     if (editId) {
       const idx = licenses.findIndex(l => String(l.id) === String(editId));
-      if (idx >= 0) { licenses[idx] = { ...licenses[idx], ...data }; ok = await spSaveLicense(licenses[idx]); }
+      if (idx >= 0) {
+        const before = { ...licenses[idx] };
+        licenses[idx] = { ...licenses[idx], ...data };
+        ok = await spSaveLicense(licenses[idx]);
+        auditAction = 'update';
+        auditName = licDisplayName(licenses[idx]) + ' (' + licenses[idx].location + ')';
+        auditId = licenses[idx].spItemId || licenses[idx].id;
+        auditSummary = diffRecord(before, licenses[idx]);
+      }
     } else {
       data.id = licenses.length ? Math.max(...licenses.map(l => typeof l.id === 'number' ? l.id : 0)) + 1 : 1;
       licenses.push(data);
       ok = await spSaveLicense(data);
+      auditAction = 'create';
+      auditName = licDisplayName(data) + ' (' + data.location + ')';
+      auditId = data.spItemId || data.id;
+      auditSummary = 'New license created';
     }
     saveLocalCache();
     if (!ok) {
-      // Don't close the modal — let the user see the error toast and retry.
       renderAll();
       return;
     }
+    if (auditAction) logAudit(auditAction, 'license', auditName, auditSummary, auditId);
     closeModal('licenseFormModal');
     renderAll();
     showToast(editId ? 'License updated' : 'License added', 'success');
@@ -3237,20 +3384,30 @@ async function saveInspection(e) {
     notes: document.getElementById('insp_notes').value,
     followupDate: document.getElementById('insp_followup').value
   };
+  let auditAction = '', auditSummary = '', auditName = '', auditId = '';
   if (editId) {
     const idx = inspections.findIndex(i => String(i.id) === String(editId));
     if (idx >= 0) {
+      const before = { ...inspections[idx] };
       data.inspDocs = inspections[idx].inspDocs || [];
       inspections[idx] = { ...inspections[idx], ...data };
       await spSaveInspection(inspections[idx]);
+      auditAction = 'update';
+      auditSummary = diffRecord(before, inspections[idx]);
+      auditName = (inspections[idx].type || 'Inspection') + ' — ' + inspections[idx].location + ' (' + (inspections[idx].date || '') + ')';
+      auditId = inspections[idx].spItemId || inspections[idx].id;
     }
   } else {
     data.id = inspections.length ? Math.max(...inspections.map(i => typeof i.id === 'number' ? i.id : 0)) + 1 : 1;
     data.inspDocs = [];
     inspections.push(data);
     await spSaveInspection(data);
+    auditAction = 'create';
+    auditName = (data.type || 'Inspection') + ' — ' + data.location + ' (' + (data.date || '') + ')';
+    auditId = data.spItemId || data.id;
   }
   saveLocalCache();
+  if (auditAction) logAudit(auditAction, 'inspection', auditName, auditSummary, auditId);
   closeModal('inspectionFormModal');
   renderInspections();
   showToast(editId ? 'Inspection updated' : 'Inspection added', 'success');
@@ -3797,11 +3954,13 @@ function saveLocation(e) {
     LOCATIONS.push(key);
   }
 
+  const before = editKey ? { ...(LOCATION_INFO[editKey] || {}) } : null;
   LOCATION_INFO[key] = { ...(LOCATION_INFO[key] || {}), ...info };
   saveLocationData();
   populateLocationFilters();
   renderLocationMgmtTable();
   renderAll();
+  logAudit(editKey ? 'update' : 'create', 'location', key, editKey && before ? diffRecord(before, LOCATION_INFO[key]) : 'New location added', key);
   closeModal('locationFormModal');
   showToast(editKey ? 'Location updated' : 'Location added', 'success');
 }
@@ -3832,6 +3991,85 @@ async function fetchADOfficeLocation(email) {
     }
   } catch(e) { console.warn('AD lookup failed for', email, e); }
   return { office: '', name: '' };
+}
+
+// ===== AUDIT LOG UI =====
+async function loadAuditLog() {
+  if (!spConnected || !spListIds[SP_LIST_AUDIT]) {
+    auditEntries = [];
+    renderAuditLog();
+    return;
+  }
+  const items = await spFetchAll(SP_LIST_AUDIT);
+  auditEntries = items.map(item => {
+    const f = item.fields || {};
+    return {
+      id: item.id,
+      timestamp: f.Timestamp || '',
+      userEmail: f.UserEmail || '',
+      userName: f.UserName || '',
+      action: f.Action || '',
+      entityType: f.EntityType || '',
+      entityName: f.EntityName || '',
+      entityId: f.EntityId || '',
+      summary: f.Summary || ''
+    };
+  }).sort((a, b) => (b.timestamp || '').localeCompare(a.timestamp || ''));
+  // Populate the user dropdown with distinct actors
+  const userSel = document.getElementById('auditUser');
+  if (userSel) {
+    const current = userSel.value;
+    const distinct = [...new Set(auditEntries.map(e => e.userEmail).filter(Boolean))].sort();
+    userSel.innerHTML = '<option value="">All users</option>' + distinct.map(e => `<option value="${escHtml(e)}" ${current === e ? 'selected' : ''}>${escHtml(e)}</option>`).join('');
+  }
+  renderAuditLog();
+}
+
+function clearAuditFilters() {
+  ['auditFrom', 'auditTo'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  ['auditUser', 'auditType', 'auditAction'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  renderAuditLog();
+}
+
+function renderAuditLog() {
+  const from = document.getElementById('auditFrom')?.value || '';
+  const to = document.getElementById('auditTo')?.value || '';
+  const userF = document.getElementById('auditUser')?.value || '';
+  const typeF = document.getElementById('auditType')?.value || '';
+  const actionF = document.getElementById('auditAction')?.value || '';
+
+  const filtered = auditEntries.filter(e => {
+    if (from && e.timestamp < from) return false;
+    if (to && e.timestamp > to + 'T23:59:59') return false;
+    if (userF && e.userEmail !== userF) return false;
+    if (typeF && e.entityType !== typeF) return false;
+    if (actionF && e.action !== actionF) return false;
+    return true;
+  });
+
+  const actionBadge = a => {
+    const colors = { create: 'badge-ok', update: 'badge-pharmacy', archive: 'badge-warning', restore: 'badge-ok', delete: 'badge-urgent' };
+    return `<span class="badge ${colors[a] || 'badge-other'}">${escHtml(a)}</span>`;
+  };
+
+  const html = filtered.map(e => {
+    let ts = '—';
+    if (e.timestamp) {
+      const d = new Date(e.timestamp);
+      if (!isNaN(d)) ts = d.toLocaleString();
+    }
+    return `<tr>
+      <td style="white-space:nowrap;font-size:12px">${escHtml(ts)}</td>
+      <td>${escHtml(e.userName || e.userEmail || 'Unknown')}<div style="font-size:11px;color:var(--gray-400)">${escHtml(e.userEmail)}</div></td>
+      <td>${actionBadge(e.action)}</td>
+      <td style="font-size:12px">${escHtml(e.entityType)}</td>
+      <td>${escHtml(e.entityName)}</td>
+      <td style="font-size:12px;color:var(--gray-500)">${escHtml(e.summary)}</td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('auditTableBody').innerHTML = html;
+  document.getElementById('auditEmpty').style.display = filtered.length ? 'none' : 'block';
 }
 
 function renderUserTable() {
@@ -3974,16 +4212,24 @@ async function saveUser(e) {
 
   if (spConnected && spListIds[SP_LIST_USERS]) {
     let ok = false;
+    let auditSummary = '';
     if (editId) {
+      const before = userRoles.find(u => String(u.spItemId) === String(editId));
       ok = await spUpdateItem(SP_LIST_USERS, editId, fields);
+      if (before) {
+        const afterShape = { email, displayName, role, locations: selectedLocs.join(', '), adOfficeLocation: adOffice };
+        const beforeShape = { email: before.email, displayName: before.displayName, role: before.role, locations: (before.locations || []).join(', '), adOfficeLocation: before.adOfficeLocation || '' };
+        auditSummary = diffRecord(beforeShape, afterShape);
+      }
     } else {
       const result = await spCreateItem(SP_LIST_USERS, fields);
       ok = !!result;
+      auditSummary = 'Added as ' + role + (selectedLocs.length ? ' for ' + selectedLocs.join(', ') : '');
     }
     if (!ok) {
-      // Error toast already shown by spUpdateItem/spCreateItem. Keep the modal open so user can retry.
       return;
     }
+    logAudit(editId ? 'update' : 'create', 'user', displayName || email, auditSummary, editId);
     await loadUserRoles();
   } else {
     // Local fallback
@@ -4011,12 +4257,14 @@ async function deleteCurrentUser() {
   const editId = document.getElementById('user_editId').value;
   if (!editId || !confirm('Remove this user from the licensing portal?')) return;
 
+  const removed = userRoles.find(u => String(u.spItemId) === String(editId));
   if (spConnected && spListIds[SP_LIST_USERS]) {
     await spDeleteItem(SP_LIST_USERS, editId);
     await loadUserRoles();
   } else {
     userRoles = userRoles.filter(u => String(u.spItemId) !== String(editId));
   }
+  if (removed) logAudit('delete', 'user', removed.displayName || removed.email, '', editId);
 
   closeModal('userFormModal');
   renderUserTable();
