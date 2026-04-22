@@ -3810,27 +3810,27 @@ function saveLocation(e) {
 async function fetchADOfficeLocation(email) {
   const token = await getToken();
   if (!token) return { office: '', name: '' };
+  // Use $filter searches (always 200 with empty results for no-match) instead of
+  // GET /users/{email} which 404s and clutters the console. Check mail first,
+  // then otherMails (where B2B guest users' external emails live), then UPN.
+  const safeEmail = email.replace(/'/g, "''");
+  const select = '$select=officeLocation,displayName,mail,userPrincipalName';
+  const queries = [
+    `$filter=mail eq '${safeEmail}'&${select}`,
+    `$filter=otherMails/any(m:m eq '${safeEmail}')&${select}`,
+    `$filter=userPrincipalName eq '${safeEmail}'&${select}`
+  ];
   try {
-    // Try direct lookup by email (works when email matches UPN)
-    const resp = await fetch(`${GRAPH_BASE}/users/${encodeURIComponent(email)}?$select=officeLocation,displayName,mail,userPrincipalName`, {
-      headers: { Authorization: `Bearer ${token}` }
-    });
-    if (resp.ok) {
+    for (const q of queries) {
+      const resp = await fetch(`${GRAPH_BASE}/users?${q}`, { headers: { Authorization: `Bearer ${token}` } });
+      if (!resp.ok) continue;
       const data = await resp.json();
-      return { office: data.officeLocation || '', name: data.displayName || '' };
-    }
-    // If direct lookup failed, search by mail property (handles UPN != email)
-    const searchResp = await fetch(`${GRAPH_BASE}/users?$filter=mail eq '${email}'&$select=officeLocation,displayName,mail`, {
-      headers: { Authorization: `Bearer ${token}` }
-    });
-    if (searchResp.ok) {
-      const searchData = await searchResp.json();
-      if (searchData.value && searchData.value.length > 0) {
-        const user = searchData.value[0];
+      if (data.value && data.value.length > 0) {
+        const user = data.value[0];
         return { office: user.officeLocation || '', name: user.displayName || '' };
       }
     }
-  } catch(e) { console.warn('AD lookup failed:', e); }
+  } catch(e) { console.warn('AD lookup failed for', email, e); }
   return { office: '', name: '' };
 }
 
