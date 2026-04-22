@@ -1801,28 +1801,47 @@ async function spFetchAll(listName) {
 async function spCreateItem(listName, fields) {
   const token = await getToken();
   const listId = spListIds[listName];
-  if (!token || !listId) return null;
+  if (!token || !listId) {
+    console.error('spCreateItem missing token or listId:', listName, { hasToken: !!token, listId });
+    showToast('SharePoint not ready — cannot save to ' + listName, 'error');
+    return null;
+  }
 
   const resp = await fetch(`${GRAPH_BASE}/sites/${spSiteId}/lists/${listId}/items`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ fields: { Title: fields.Title || 'Item', ...fields } })
   });
-  if (!resp.ok) { console.error('Create item failed:', await resp.text()); return null; }
+  if (!resp.ok) {
+    const body = await resp.text();
+    console.error('SP create failed:', listName, resp.status, body, 'fields:', fields);
+    showToast('SharePoint rejected create (' + resp.status + ') — see console', 'error');
+    return null;
+  }
   return await resp.json();
 }
 
 async function spUpdateItem(listName, spItemId, fields) {
   const token = await getToken();
   const listId = spListIds[listName];
-  if (!token || !listId) return false;
+  if (!token || !listId) {
+    console.error('spUpdateItem missing token or listId:', listName, { hasToken: !!token, listId });
+    showToast('SharePoint not ready — cannot save to ' + listName, 'error');
+    return false;
+  }
 
   const resp = await fetch(`${GRAPH_BASE}/sites/${spSiteId}/lists/${listId}/items/${spItemId}/fields`, {
     method: 'PATCH',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     body: JSON.stringify(fields)
   });
-  return resp.ok;
+  if (!resp.ok) {
+    const body = await resp.text();
+    console.error('SP update failed:', listName, spItemId, resp.status, body, 'fields:', fields);
+    showToast('SharePoint rejected save (' + resp.status + ') — see console', 'error');
+    return false;
+  }
+  return true;
 }
 
 async function spDeleteItem(listName, spItemId) {
@@ -2011,49 +2030,60 @@ async function loadFromSharePoint() {
 }
 
 // ===== SAVE SINGLE ITEM TO SHAREPOINT =====
+// Returns true on success, false on failure. Callers MUST check this — a silent
+// localStorage-only save looks fine until the next SP load overwrites it.
 async function spSaveLicense(license) {
-  if (!spConnected) { saveLocalCache(); return; }
+  if (!spConnected) { saveLocalCache(); return true; }
   const fields = licenseToSpFields(license);
+  let ok = false;
   if (license.spItemId) {
-    await spUpdateItem(SP_LIST_LICENSES, license.spItemId, fields);
+    ok = await spUpdateItem(SP_LIST_LICENSES, license.spItemId, fields);
   } else {
     const result = await spCreateItem(SP_LIST_LICENSES, fields);
     if (result) {
       license.spItemId = result.id;
       license.id = result.id;
+      ok = true;
     }
   }
   saveLocalCache();
+  return ok;
 }
 
 async function spSaveInspection(inspection) {
-  if (!spConnected || !spListIds[SP_LIST_INSPECTIONS]) { saveLocalCache(); return; }
+  if (!spConnected || !spListIds[SP_LIST_INSPECTIONS]) { saveLocalCache(); return true; }
   const fields = inspectionToSpFields(inspection);
+  let ok = false;
   if (inspection.spItemId) {
-    await spUpdateItem(SP_LIST_INSPECTIONS, inspection.spItemId, fields);
+    ok = await spUpdateItem(SP_LIST_INSPECTIONS, inspection.spItemId, fields);
   } else {
     const result = await spCreateItem(SP_LIST_INSPECTIONS, fields);
     if (result) {
       inspection.spItemId = result.id;
       inspection.id = result.id;
+      ok = true;
     }
   }
   saveLocalCache();
+  return ok;
 }
 
 async function spSaveDocument(doc) {
-  if (!spConnected || !spListIds[SP_LIST_DOCUMENTS]) { saveLocalCache(); return; }
+  if (!spConnected || !spListIds[SP_LIST_DOCUMENTS]) { saveLocalCache(); return true; }
   const fields = documentToSpFields(doc);
+  let ok = false;
   if (doc.spItemId) {
-    await spUpdateItem(SP_LIST_DOCUMENTS, doc.spItemId, fields);
+    ok = await spUpdateItem(SP_LIST_DOCUMENTS, doc.spItemId, fields);
   } else {
     const result = await spCreateItem(SP_LIST_DOCUMENTS, fields);
     if (result) {
       doc.spItemId = result.id;
       doc.id = result.id;
+      ok = true;
     }
   }
   saveLocalCache();
+  return ok;
 }
 
 // ===== MIGRATE LOCAL DATA TO SHAREPOINT =====
@@ -3026,15 +3056,21 @@ async function saveLicense(e) {
   const file = fileInput.files[0];
 
   async function finishSave(data, editId) {
+    let ok = true;
     if (editId) {
       const idx = licenses.findIndex(l => String(l.id) === String(editId));
-      if (idx >= 0) { licenses[idx] = { ...licenses[idx], ...data }; await spSaveLicense(licenses[idx]); }
+      if (idx >= 0) { licenses[idx] = { ...licenses[idx], ...data }; ok = await spSaveLicense(licenses[idx]); }
     } else {
       data.id = licenses.length ? Math.max(...licenses.map(l => typeof l.id === 'number' ? l.id : 0)) + 1 : 1;
       licenses.push(data);
-      await spSaveLicense(data);
+      ok = await spSaveLicense(data);
     }
     saveLocalCache();
+    if (!ok) {
+      // Don't close the modal — let the user see the error toast and retry.
+      renderAll();
+      return;
+    }
     closeModal('licenseFormModal');
     renderAll();
     showToast(editId ? 'License updated' : 'License added', 'success');
@@ -3936,10 +3972,16 @@ async function saveUser(e) {
   console.log('Saving user fields:', JSON.stringify(fields));
 
   if (spConnected && spListIds[SP_LIST_USERS]) {
+    let ok = false;
     if (editId) {
-      await spUpdateItem(SP_LIST_USERS, editId, fields);
+      ok = await spUpdateItem(SP_LIST_USERS, editId, fields);
     } else {
-      await spCreateItem(SP_LIST_USERS, fields);
+      const result = await spCreateItem(SP_LIST_USERS, fields);
+      ok = !!result;
+    }
+    if (!ok) {
+      // Error toast already shown by spUpdateItem/spCreateItem. Keep the modal open so user can retry.
+      return;
     }
     await loadUserRoles();
   } else {
