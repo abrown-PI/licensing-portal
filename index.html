@@ -305,6 +305,7 @@
     <button class="nav-tab" data-page="personnel">Personnel</button>
     <button class="nav-tab" data-page="inspections">Inspections</button>
     <button class="nav-tab" data-page="documents">Documents</button>
+    <button class="nav-tab manager-tab" data-page="employees" style="display:none">Employees</button>
     <button class="nav-tab admin-only-tab" data-page="users" style="display:none">User Management</button>
     <button class="nav-tab admin-only-tab" data-page="audit" style="display:none">Audit Log</button>
   </div>
@@ -686,6 +687,38 @@
     </div>
   </div>
 
+  <!-- EMPLOYEES PAGE (Admin + Location Manager) -->
+  <div class="page" id="page-employees">
+    <div class="card">
+      <div class="card-header">
+        <h2>Employees (Non-365)</h2>
+        <button class="btn btn-sm btn-primary" onclick="openAddEmployee()">+ Add Employee</button>
+      </div>
+      <div class="card-body">
+        <p style="font-size:13px;color:var(--gray-500);margin-bottom:16px">Add employees who don't have a Microsoft 365 account so you can track their licenses. These records are for license holders only — they do not grant app access.</p>
+        <div style="margin-bottom:12px">
+          <input type="text" id="employeeSearch" placeholder="Search by name, email, or location..." oninput="renderEmployeeTable()" style="width:100%;max-width:400px;padding:8px 10px;font-size:13px;border:1px solid var(--gray-300);border-radius:var(--radius)">
+        </div>
+        <div class="table-responsive">
+          <table class="data-table" id="employeeTable">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Email</th>
+                <th>Office Location</th>
+                <th>Job Title</th>
+                <th>Licenses</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="employeeTableBody"></tbody>
+          </table>
+        </div>
+        <div id="employeeEmpty" style="text-align:center;padding:40px;color:var(--gray-500);display:none">No employees added yet.</div>
+      </div>
+    </div>
+  </div>
+
   <div class="page" id="page-audit">
     <div class="card">
       <div class="card-header">
@@ -797,6 +830,48 @@
           <button type="button" class="btn btn-secondary" onclick="closeModal('userFormModal')">Cancel</button>
           <button type="button" class="btn btn-danger btn-sm" id="deleteUserBtn" onclick="deleteCurrentUser()" style="display:none">Delete User</button>
           <button type="submit" class="btn btn-primary">Save User</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- ADD/EDIT EMPLOYEE MODAL -->
+<div class="modal-overlay" id="employeeFormModal">
+  <div class="modal" style="max-width:560px">
+    <div class="modal-header">
+      <h2 id="employeeFormTitle">Add Employee</h2>
+      <button class="modal-close" onclick="closeModal('employeeFormModal')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <form id="employeeForm" onsubmit="saveEmployee(event)">
+        <div class="form-grid">
+          <div class="form-group full-width">
+            <label>Full Name *</label>
+            <input type="text" id="emp_name" required placeholder="e.g. Jane Smith">
+          </div>
+          <div class="form-group">
+            <label>Email</label>
+            <input type="email" id="emp_email" placeholder="optional">
+          </div>
+          <div class="form-group">
+            <label>Office Location *</label>
+            <select id="emp_office" required></select>
+          </div>
+          <div class="form-group full-width">
+            <label>Job Title</label>
+            <input type="text" id="emp_jobTitle" placeholder="e.g. Pharmacy Technician">
+          </div>
+          <div class="form-group full-width">
+            <label>Notes</label>
+            <textarea id="emp_notes" placeholder="Optional notes" style="min-height:70px"></textarea>
+          </div>
+        </div>
+        <input type="hidden" id="emp_editId">
+        <div class="form-actions">
+          <button type="button" class="btn btn-secondary" onclick="closeModal('employeeFormModal')">Cancel</button>
+          <button type="button" class="btn btn-danger btn-sm" id="deleteEmployeeBtn" onclick="deleteCurrentEmployee()" style="display:none">Delete</button>
+          <button type="submit" class="btn btn-primary">Save Employee</button>
         </div>
       </form>
     </div>
@@ -1198,6 +1273,7 @@ const SP_LIST_INSPECTIONS = 'Licensing_Inspections';
 const SP_LIST_DOCUMENTS = 'Licensing_Documents';
 const SP_LIST_USERS = 'Licensing_UserRoles';
 const SP_LIST_AUDIT = 'Licensing_AuditLog';
+const SP_LIST_EMPLOYEES = 'Licensing_Employees';
 const SP_DOC_LIBRARY = 'Licensing_Files';
 const SP_CFG_KEY = 'licensing_sp_config';
 const GRAPH_BASE = 'https://graph.microsoft.com/v1.0';
@@ -1225,6 +1301,7 @@ let licenses = [];
 let inspections = [];
 let documents = [];
 let auditEntries = []; // loaded on demand when audit tab is opened
+let employees = []; // manually-added non-365 employees
 let currentLicenseId = null;
 let sortField = 'expirationDate';
 let sortDir = 1;
@@ -1688,7 +1765,7 @@ async function spConnect() {
     spSiteId = siteData.id;
 
     // Resolve list IDs
-    for (const listName of [SP_LIST_LICENSES, SP_LIST_INSPECTIONS, SP_LIST_DOCUMENTS, SP_LIST_USERS, SP_LIST_AUDIT]) {
+    for (const listName of [SP_LIST_LICENSES, SP_LIST_INSPECTIONS, SP_LIST_DOCUMENTS, SP_LIST_USERS, SP_LIST_AUDIT, SP_LIST_EMPLOYEES]) {
       try {
         const listResp = await fetch(`${GRAPH_BASE}/sites/${spSiteId}/lists/${encodeURIComponent(listName)}`, { headers: { Authorization: `Bearer ${token}` } });
         if (listResp.ok) {
@@ -1788,6 +1865,13 @@ async function spCreateLists() {
       { name: 'EntityName', text: {} },
       { name: 'EntityId', text: {} },
       { name: 'Summary', text: { allowMultipleLines: true } }
+    ]},
+    { displayName: SP_LIST_EMPLOYEES, columns: [
+      { name: 'DisplayName', text: {} },
+      { name: 'Email', text: {} },
+      { name: 'OfficeLocation', text: {} },
+      { name: 'JobTitle', text: {} },
+      { name: 'Notes', text: { allowMultipleLines: true } }
     ]}
   ];
 
@@ -2454,6 +2538,7 @@ async function onSignedIn(account) {
     // Load user roles first so we know permissions
     await loadUserRoles();
     await resolveUserRole();
+    await loadEmployees();
 
     const loaded = await loadFromSharePoint();
     if (!loaded && licenses.length > 0 && isAdmin) {
@@ -2470,6 +2555,7 @@ async function onSignedIn(account) {
   applyRoleUI();
   renderAll();
   if (canManageUsers()) { renderUserTable(); renderLocationMgmtTable(); }
+  if (canManageEmployees()) renderEmployeeTable();
   updateSpStatus();
 }
 
@@ -2482,6 +2568,7 @@ function setupNavigation() {
       tab.classList.add('active');
       document.getElementById('page-' + tab.dataset.page).classList.add('active');
       if (tab.dataset.page === 'audit') loadAuditLog();
+      if (tab.dataset.page === 'employees') { loadEmployees().then(renderEmployeeTable); }
     });
   });
 }
@@ -3738,6 +3825,24 @@ async function loadUserRoles() {
   backfillOfficeLocations();
 }
 
+async function loadEmployees() {
+  if (!spConnected || !spListIds[SP_LIST_EMPLOYEES]) { employees = []; return; }
+  try {
+    const items = await spFetchAll(SP_LIST_EMPLOYEES);
+    employees = items.map(item => {
+      const f = item.fields || {};
+      return {
+        spItemId: item.id,
+        displayName: f.DisplayName || f.Title || '',
+        email: (f.Email || '').toLowerCase(),
+        officeLocation: f.OfficeLocation || '',
+        jobTitle: f.JobTitle || '',
+        notes: f.Notes || ''
+      };
+    }).sort((a,b) => (a.displayName||'').localeCompare(b.displayName||''));
+  } catch(e) { console.warn('loadEmployees failed:', e); employees = []; }
+}
+
 async function backfillOfficeLocations() {
   for (const u of userRoles) {
     if (!u.adOfficeLocation && u.email) {
@@ -3830,12 +3935,16 @@ function canUpload(loc) { return userRole === ROLES.ADMIN || (userRole === ROLES
 function canViewCredentials() { return userRole === ROLES.ADMIN; }
 function canViewLocation(loc) { return userRole === ROLES.ADMIN || userRole === ROLES.OFFICE_STAFF || ((userRole === ROLES.LOCATION_MANAGER || userRole === ROLES.VIEWER) && userLocations.includes(loc)); }
 function canManageUsers() { return userRole === ROLES.ADMIN; }
+function canManageEmployees() { return userRole === ROLES.ADMIN || userRole === ROLES.LOCATION_MANAGER; }
 function canDownload() { return true; } // all roles can download
 
 function applyRoleUI() {
   // Show/hide admin-only elements
   document.querySelectorAll('.admin-only-tab').forEach(el => {
     el.style.display = canManageUsers() ? '' : 'none';
+  });
+  document.querySelectorAll('.manager-tab').forEach(el => {
+    el.style.display = canManageEmployees() ? '' : 'none';
   });
 
   // Show/hide add buttons based on role
@@ -4070,6 +4179,151 @@ function renderAuditLog() {
 
   document.getElementById('auditTableBody').innerHTML = html;
   document.getElementById('auditEmpty').style.display = filtered.length ? 'none' : 'block';
+}
+
+// ===== EMPLOYEES (non-365) =====
+function employeesVisibleToUser() {
+  if (userRole === ROLES.ADMIN || userRole === ROLES.OFFICE_STAFF) return employees.slice();
+  if (userRole === ROLES.LOCATION_MANAGER) {
+    return employees.filter(e => userLocations.includes(e.officeLocation));
+  }
+  return [];
+}
+
+function renderEmployeeTable() {
+  const tbody = document.getElementById('employeeTableBody');
+  const empty = document.getElementById('employeeEmpty');
+  if (!tbody) return;
+  const q = (document.getElementById('employeeSearch')?.value || '').toLowerCase().trim();
+  let rows = employeesVisibleToUser();
+  if (q) {
+    rows = rows.filter(e =>
+      (e.displayName + ' ' + e.email + ' ' + e.officeLocation + ' ' + (e.jobTitle || '')).toLowerCase().includes(q)
+    );
+  }
+  rows.sort((a,b) => (a.displayName||'').localeCompare(b.displayName||''));
+  const html = rows.map(e => {
+    const licCount = licenses.filter(l => !l.archived && l.licenseHolder && l.licenseHolder.toLowerCase() === (e.displayName || '').toLowerCase()).length;
+    const canEditEmp = userRole === ROLES.ADMIN || (userRole === ROLES.LOCATION_MANAGER && userLocations.includes(e.officeLocation));
+    return `<tr>
+      <td><strong>${escHtml(e.displayName)}</strong></td>
+      <td>${escHtml(e.email || '')}</td>
+      <td>${escHtml(e.officeLocation || '')}</td>
+      <td>${escHtml(e.jobTitle || '')}</td>
+      <td>${licCount ? '<span class="badge badge-ok">'+licCount+'</span>' : '<span style="color:var(--gray-400)">0</span>'}</td>
+      <td>${canEditEmp ? `<button class="btn btn-sm btn-secondary" onclick="openEditEmployee('${e.spItemId}')">Edit</button>` : '<span style="color:var(--gray-400);font-size:12px">View only</span>'}</td>
+    </tr>`;
+  }).join('');
+  tbody.innerHTML = html;
+  if (empty) empty.style.display = rows.length ? 'none' : 'block';
+}
+
+function populateEmployeeOfficeSelect(selected) {
+  const sel = document.getElementById('emp_office');
+  if (!sel) return;
+  const locs = (userRole === ROLES.LOCATION_MANAGER) ? userLocations : LOCATIONS;
+  sel.innerHTML = '<option value="">— Select location —</option>' + locs.map(loc => {
+    const s = (loc === selected) ? ' selected' : '';
+    return `<option value="${escHtml(loc)}"${s}>${escHtml(loc)}</option>`;
+  }).join('');
+}
+
+function openAddEmployee() {
+  if (!canManageEmployees()) { showToast('Not allowed', 'error'); return; }
+  document.getElementById('employeeFormTitle').textContent = 'Add Employee';
+  document.getElementById('employeeForm').reset();
+  document.getElementById('emp_editId').value = '';
+  document.getElementById('deleteEmployeeBtn').style.display = 'none';
+  populateEmployeeOfficeSelect('');
+  openModal('employeeFormModal');
+}
+
+function openEditEmployee(spId) {
+  const e = employees.find(x => String(x.spItemId) === String(spId));
+  if (!e) return;
+  if (userRole === ROLES.LOCATION_MANAGER && !userLocations.includes(e.officeLocation)) {
+    showToast('You can only edit employees at your assigned locations', 'error');
+    return;
+  }
+  document.getElementById('employeeFormTitle').textContent = 'Edit Employee — ' + (e.displayName || '');
+  document.getElementById('emp_editId').value = e.spItemId;
+  document.getElementById('emp_name').value = e.displayName || '';
+  document.getElementById('emp_email').value = e.email || '';
+  populateEmployeeOfficeSelect(e.officeLocation || '');
+  document.getElementById('emp_jobTitle').value = e.jobTitle || '';
+  document.getElementById('emp_notes').value = e.notes || '';
+  document.getElementById('deleteEmployeeBtn').style.display = 'inline-flex';
+  openModal('employeeFormModal');
+}
+
+async function saveEmployee(ev) {
+  ev.preventDefault();
+  if (!canManageEmployees()) { showToast('Not allowed', 'error'); return; }
+  if (!spConnected || !spListIds[SP_LIST_EMPLOYEES]) { showToast('SharePoint not connected', 'error'); return; }
+
+  const editId = document.getElementById('emp_editId').value;
+  const displayName = document.getElementById('emp_name').value.trim();
+  const email = document.getElementById('emp_email').value.trim().toLowerCase();
+  const officeLocation = document.getElementById('emp_office').value;
+  const jobTitle = document.getElementById('emp_jobTitle').value.trim();
+  const notes = document.getElementById('emp_notes').value.trim();
+
+  if (!displayName) { showToast('Name is required', 'error'); return; }
+  if (!officeLocation) { showToast('Office location is required', 'error'); return; }
+  if (userRole === ROLES.LOCATION_MANAGER && !userLocations.includes(officeLocation)) {
+    showToast('You can only add employees at your assigned locations', 'error');
+    return;
+  }
+
+  const fields = {
+    Title: displayName,
+    DisplayName: displayName,
+    Email: email,
+    OfficeLocation: officeLocation,
+    JobTitle: jobTitle,
+    Notes: notes
+  };
+
+  let ok = false;
+  let auditSummary = '';
+  if (editId) {
+    const before = employees.find(x => String(x.spItemId) === String(editId));
+    ok = await spUpdateItem(SP_LIST_EMPLOYEES, editId, fields);
+    if (before && ok) {
+      const beforeShape = { displayName: before.displayName, email: before.email, officeLocation: before.officeLocation, jobTitle: before.jobTitle, notes: before.notes };
+      const afterShape = { displayName, email, officeLocation, jobTitle, notes };
+      auditSummary = diffRecord(beforeShape, afterShape);
+    }
+  } else {
+    const result = await spCreateItem(SP_LIST_EMPLOYEES, fields);
+    ok = !!result;
+    auditSummary = 'Added at ' + officeLocation + (jobTitle ? ' — ' + jobTitle : '');
+  }
+  if (!ok) return;
+  logAudit(editId ? 'update' : 'create', 'employee', displayName, auditSummary, editId);
+  await loadEmployees();
+  renderEmployeeTable();
+  closeModal('employeeFormModal');
+  showToast(editId ? 'Employee updated' : 'Employee added', 'success');
+}
+
+async function deleteCurrentEmployee() {
+  const editId = document.getElementById('emp_editId').value;
+  if (!editId) return;
+  const e = employees.find(x => String(x.spItemId) === String(editId));
+  if (!e) return;
+  if (userRole === ROLES.LOCATION_MANAGER && !userLocations.includes(e.officeLocation)) {
+    showToast('Not allowed', 'error'); return;
+  }
+  if (!confirm('Delete employee "' + e.displayName + '"? Their existing license records will remain.')) return;
+  if (spConnected && spListIds[SP_LIST_EMPLOYEES]) {
+    await spDeleteItem(SP_LIST_EMPLOYEES, editId);
+  }
+  logAudit('delete', 'employee', e.displayName, 'Removed employee from ' + (e.officeLocation || ''), editId);
+  await loadEmployees();
+  renderEmployeeTable();
+  closeModal('employeeFormModal');
+  showToast('Employee deleted', 'success');
 }
 
 function renderUserTable() {
@@ -4439,7 +4693,16 @@ function searchLicenseHolder() {
     }
   });
 
-  // 2. Existing known holders from licenses (for consistency)
+  // 2. Manually-added employees (non-365)
+  employees.forEach(emp => {
+    const searchStr = (emp.displayName + ' ' + (emp.email || '') + ' ' + (emp.officeLocation || '') + ' ' + (emp.jobTitle || '')).toLowerCase();
+    if (searchStr.includes(ql) && !results.find(r => r.name === emp.displayName)) {
+      const sub = [emp.jobTitle, emp.officeLocation].filter(Boolean).join(' — ');
+      results.push({ name: emp.displayName, type: 'employee', sub: sub || 'Non-365 employee', email: emp.email });
+    }
+  });
+
+  // 3. Existing known holders from licenses (for consistency)
   const existingHolders = new Set();
   licenses.forEach(l => {
     if (l.licenseHolder && l.licenseHolder.length > 1) existingHolders.add(l.licenseHolder.trim());
@@ -4453,7 +4716,7 @@ function searchLicenseHolder() {
   // Show local results immediately
   renderHolderResults(results, container);
 
-  // 3. Search Office 365 users via Graph API
+  // 4. Search Office 365 users via Graph API
   clearTimeout(holderSearchTimeout);
   holderSearchTimeout = setTimeout(async () => {
     const token = await getToken();
@@ -4484,8 +4747,8 @@ function renderHolderResults(results, container) {
   }
 
   container.innerHTML = results.slice(0, 15).map(r => {
-    const icon = r.type === 'location' ? '🏥' : r.type === '365' ? '👤' : '📋';
-    const label = r.type === 'location' ? 'Location' : r.type === '365' ? 'Office 365' : 'Existing';
+    const icon = r.type === 'location' ? '🏥' : r.type === '365' ? '👤' : r.type === 'employee' ? '🧑' : '📋';
+    const label = r.type === 'location' ? 'Location' : r.type === '365' ? 'Office 365' : r.type === 'employee' ? 'Employee' : 'Existing';
     return `<div style="padding:8px 12px;cursor:pointer;border-bottom:1px solid var(--gray-100);font-size:13px;display:flex;align-items:center;gap:8px;transition:background .1s"
       onmouseover="this.style.background='var(--gray-50)'" onmouseout="this.style.background=''"
       onclick="selectLicenseHolder('${escHtml(r.name)}')">
