@@ -1150,20 +1150,25 @@
             </select>
           </div>
           <div class="form-group">
-            <label>Board Website</label>
-            <input type="text" id="lic_website" placeholder="URL or description">
-          </div>
-          <div class="form-group">
             <label>Board Email on File</label>
             <input type="text" id="lic_boardEmail" placeholder="email used for board account">
           </div>
           <div class="form-group">
-            <label>Board Username</label>
-            <input type="text" id="lic_username" placeholder="Login username">
+            <label>Board Website</label>
+            <input type="text" id="lic_website" placeholder="URL or description">
           </div>
-          <div class="form-group">
-            <label>Board Password</label>
-            <input type="text" id="lic_password" placeholder="Login password">
+          <div class="form-group full-width board-credentials-row" id="licBoardCreds" style="display:none">
+            <div style="display:flex;gap:12px;align-items:end">
+              <div style="flex:1">
+                <label>Board Username</label>
+                <input type="text" id="lic_username" placeholder="Login username">
+              </div>
+              <div style="flex:1">
+                <label>Board Password</label>
+                <input type="text" id="lic_password" placeholder="Login password">
+              </div>
+            </div>
+            <small style="color:var(--gray-400);font-size:11px">Admin-only — shared login credentials for the state board account.</small>
           </div>
           <div class="form-group full-width">
             <label>Internal Notes for This License</label>
@@ -3205,17 +3210,19 @@ function openLicenseDetail(id) {
   html += detailRow('Status', statusBadge(l.renewalStatus) || '<span class="status-badge status-current">Current</span>');
   html += '</div>';
 
-  if (l.boardWebsite || l.boardUsername || l.boardPassword || l.boardEmail) {
-    html += '<div class="detail-section"><h3>Board Access Credentials</h3><div class="detail-grid">';
+  const showCreds = canViewCredentials();
+  const hasAnyBoardInfo = l.boardWebsite || l.boardEmail || (showCreds && (l.boardUsername || l.boardPassword));
+  if (hasAnyBoardInfo) {
+    html += '<div class="detail-section"><h3>Board Access</h3><div class="detail-grid">';
     if (l.boardWebsite) {
       const url = l.boardWebsite.startsWith('http') ? l.boardWebsite : '';
       html += detailRow('Website', url ? `<a href="${url}" target="_blank" style="color:var(--primary)">${l.boardWebsite}</a>` : l.boardWebsite);
     }
-    if (l.boardUsername) html += detailRow('Username', `<code>${l.boardUsername}</code>`);
-    if (l.boardPassword) {
+    if (l.boardEmail) html += detailRow('Email on File', l.boardEmail);
+    if (showCreds && l.boardUsername) html += detailRow('Username', `<code>${l.boardUsername}</code>`);
+    if (showCreds && l.boardPassword) {
       html += detailRow('Password', `<span class="cred-masked" id="detail_pw">••••••••</span><button class="reveal-btn" onclick="this.previousElementSibling.textContent=this.previousElementSibling.textContent==='••••••••'?'${escHtml(l.boardPassword)}':'••••••••';this.textContent=this.textContent==='show'?'hide':'show'">show</button>`);
     }
-    if (l.boardEmail) html += detailRow('Email on File', l.boardEmail);
     html += '</div></div>';
   }
 
@@ -3372,6 +3379,7 @@ function openAddLicense() {
   document.getElementById('lic_renewalDocsPreview').innerHTML = '';
   document.getElementById('lic_requirementsPreview').innerHTML = '';
   document.getElementById('licFormDangerBtns').style.display = 'none';
+  document.getElementById('licBoardCreds').style.display = canEdit() ? 'block' : 'none';
   populateLicLocationSelect();
   openModal('licenseFormModal');
 }
@@ -3416,6 +3424,7 @@ function openEditLicense(id) {
   }
   document.getElementById('lic_file').value = '';
   document.getElementById('licFormDangerBtns').style.display = canEdit() ? 'flex' : 'none';
+  document.getElementById('licBoardCreds').style.display = canEdit() ? 'block' : 'none';
   openModal('licenseFormModal');
 }
 
