@@ -1120,8 +1120,10 @@
           </div>
           <div class="form-group" style="position:relative">
             <label>License Holder</label>
-            <input type="text" id="lic_holder" placeholder="Search employee or location..." oninput="searchLicenseHolder()" onfocus="searchLicenseHolder()" autocomplete="off">
+            <input type="text" id="lic_holder" placeholder="Search 365 user, employee, or location..." oninput="onHolderInput()" onfocus="searchLicenseHolder()" autocomplete="off">
+            <input type="hidden" id="lic_holderValidated" value="">
             <div id="lic_holderResults" style="display:none;position:absolute;top:100%;left:0;right:0;background:white;border:1px solid var(--gray-300);border-radius:var(--radius);max-height:220px;overflow-y:auto;z-index:10;box-shadow:var(--shadow-md)"></div>
+            <small style="color:var(--gray-400);font-size:11px">Must be picked from the dropdown — free-typed names are rejected.</small>
           </div>
           <div class="form-group">
             <label>Renewal Frequency</label>
@@ -3387,7 +3389,8 @@ function openEditLicense(id) {
   document.getElementById('lic_type').value = l.type;
   document.getElementById('lic_expiration').value = l.expirationDate;
   document.getElementById('lic_issueDate').value = l.issueDate;
-  document.getElementById('lic_holder').value = l.licenseHolder;
+  document.getElementById('lic_holder').value = l.licenseHolder || '';
+  document.getElementById('lic_holderValidated').value = l.licenseHolder || ''; // grandfather existing value
   document.getElementById('lic_frequency').value = l.renewalFrequency;
   document.getElementById('lic_lastVerified').value = l.lastVerified;
   document.getElementById('lic_renewalStatus').value = l.renewalStatus;
@@ -3468,6 +3471,14 @@ async function saveLicense(e) {
   const chosenLoc = document.getElementById('lic_location').value;
   if (!canEdit() && !canEditLocation(chosenLoc)) {
     showToast('You can only add/edit licenses for your assigned locations', 'error');
+    return;
+  }
+  // Require License Holder to be picked from the dropdown
+  const holderValue = (document.getElementById('lic_holder').value || '').trim();
+  const holderValidated = (document.getElementById('lic_holderValidated').value || '').trim();
+  if (holderValue && holderValue !== holderValidated) {
+    document.getElementById('lic_holder').focus();
+    showToast('Pick the License Holder from the dropdown — free-typed names aren\'t allowed', 'error');
     return;
   }
   const data = {
@@ -5793,7 +5804,16 @@ function renderHolderResults(results, container) {
 
 function selectLicenseHolder(name) {
   document.getElementById('lic_holder').value = name;
+  document.getElementById('lic_holderValidated').value = name; // mark this exact name as picked
   document.getElementById('lic_holderResults').style.display = 'none';
+}
+
+function onHolderInput() {
+  const v = document.getElementById('lic_holder').value.trim();
+  const validated = document.getElementById('lic_holderValidated').value;
+  // Typed value drifted from the picked value — invalidate
+  if (v !== validated) document.getElementById('lic_holderValidated').value = '';
+  searchLicenseHolder();
 }
 
 // Close holder dropdown on outside click
