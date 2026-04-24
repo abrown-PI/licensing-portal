@@ -3681,13 +3681,18 @@ function renderPersonnelTable() {
     // Most urgent renewal status across this person's active licenses
     let worstStatusKey = 'CURRENT';
     let worstRank = RENEWAL_STATUS_RANK['CURRENT'];
+    let worstLicense = null;
     p.licenses.forEach(l => {
       const key = (l.renewalStatus || '').toUpperCase();
       const rank = RENEWAL_STATUS_RANK[key] != null ? RENEWAL_STATUS_RANK[key] : 5;
-      if (rank < worstRank) { worstRank = rank; worstStatusKey = key; }
+      if (rank < worstRank) { worstRank = rank; worstStatusKey = key; worstLicense = l; }
     });
     const statusLabel = RENEWAL_STATUS_LABEL[worstStatusKey] || 'Current';
     const statusClass = RENEWAL_STATUS_BADGE[worstStatusKey] || 'badge-ok';
+    const statusClickable = worstLicense && worstStatusKey !== 'CURRENT' && worstStatusKey !== '';
+    const statusCell = statusClickable
+      ? `<span class="badge ${statusClass}" style="cursor:pointer;text-decoration:underline dotted" title="Open ${escHtml(licDisplayName(worstLicense))} — click to edit" onclick="clickLicense('${worstLicense.id}')">${escHtml(statusLabel)}</span>`
+      : `<span class="badge ${statusClass}">${escHtml(statusLabel)}</span>`;
 
     // Combined "Next Expiring" cell: date + colored days-left badge
     const nextExpCell = nextExp
@@ -3722,7 +3727,7 @@ function renderPersonnelTable() {
       <td>${p.role}</td>
       <td>${[...p.locations].join(', ')}</td>
       <td>${nextExpCell}</td>
-      <td><span class="badge ${statusClass}">${escHtml(statusLabel)}</span></td>
+      <td>${statusCell}</td>
       <td><div style="display:flex;flex-wrap:wrap;gap:8px">${actionStacks}</div></td>
     </tr>`;
   }).join('');
