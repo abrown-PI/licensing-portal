@@ -4194,6 +4194,22 @@ function escHtml(s) {
   return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
 
+// For a JS string literal inside an HTML attribute like onclick="foo('VALUE')".
+// JS-escape first (so apostrophes in names like "Reed's Pharmacy" don't terminate
+// the string), then HTML-escape the result so ampersands/quotes don't break the attr.
+function escJsAttr(s) {
+  if (s == null) return '';
+  return (s + '')
+    .replace(/\\/g, '\\\\')
+    .replace(/'/g, "\\'")
+    .replace(/\n/g, '\\n')
+    .replace(/\r/g, '\\r')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
 function togglePw(id, pw) {
   const el = document.getElementById('pw_' + id);
   if (el.textContent === '••••••••') el.textContent = pw;
@@ -4469,7 +4485,7 @@ function renderLocationMgmtTable() {
       <td>${info.dba || ''}</td>
       <td>${info.address ? info.address + ', ' + (info.city||'') + ', ' + (info.stateAbbr||'') + ' ' + (info.zip||'') : ''}</td>
       <td>${info.phone || ''}</td>
-      <td><button class="btn btn-sm btn-secondary" onclick="openEditLocation('${escHtml(loc)}')">Edit</button></td>
+      <td><button class="btn btn-sm btn-secondary" onclick="openEditLocation('${escJsAttr(loc)}')">Edit</button></td>
     </tr>`;
   }).join('');
   document.getElementById('locationMgmtBody').innerHTML = html;
@@ -5690,7 +5706,7 @@ async function searchADUsers(query) {
           const email = u.mail || u.userPrincipalName || '';
           return `<div style="padding:10px 12px;cursor:pointer;font-size:13px;border-bottom:1px solid var(--gray-100);display:flex;justify-content:space-between"
             onmouseover="this.style.background='var(--gray-50)'" onmouseout="this.style.background=''"
-            onclick="selectADUser('${escHtml(u.displayName)}','${escHtml(email)}','${escHtml(u.officeLocation || '')}')">
+            onclick="selectADUser('${escJsAttr(u.displayName)}','${escJsAttr(email)}','${escJsAttr(u.officeLocation || '')}')">
             <div><strong>${escHtml(u.displayName)}</strong><br><span style="color:var(--gray-500)">${escHtml(email)}</span></div>
             <div style="text-align:right;color:var(--gray-400);font-size:11px">${escHtml(u.jobTitle || '')}<br>${escHtml(u.officeLocation || '')}</div>
           </div>`;
@@ -6063,7 +6079,7 @@ function renderInspEmployeeResults(results, container) {
       const label = r.type === '365' ? 'Office 365' : r.type === 'employee' ? 'Employee' : 'Prior';
       return `<div style="padding:8px 12px;cursor:pointer;border-bottom:1px solid var(--gray-100);font-size:13px;display:flex;align-items:center;gap:8px"
         onmouseover="this.style.background='var(--gray-50)'" onmouseout="this.style.background=''"
-        onclick="selectInspEmployee('${escHtml(r.name)}')">
+        onclick="selectInspEmployee('${escJsAttr(r.name)}')">
         <span>${icon}</span>
         <div style="flex:1;min-width:0">
           <strong>${escHtml(r.name)}</strong>
@@ -6078,7 +6094,7 @@ function renderInspEmployeeResults(results, container) {
     if (!exactExisting) {
       html += `<div style="padding:10px 12px;cursor:pointer;border-top:2px solid var(--gray-200);font-size:13px;display:flex;align-items:center;gap:8px;background:#f0f9ff;color:#075985"
         onmouseover="this.style.background='#e0f2fe'" onmouseout="this.style.background='#f0f9ff'"
-        onclick="inspAddInlineEmployee('${escHtml(typed)}')">
+        onclick="inspAddInlineEmployee('${escJsAttr(typed)}')">
         <span>➕</span>
         <strong style="flex:1">+ Add "${escHtml(typed)}" as a non-365 employee</strong>
       </div>`;
@@ -6238,7 +6254,7 @@ function renderHolderResults(results, container) {
       const label = r.type === 'location' ? 'Location' : r.type === '365' ? 'Office 365' : r.type === 'employee' ? 'Employee' : 'Existing';
       return `<div style="padding:8px 12px;cursor:pointer;border-bottom:1px solid var(--gray-100);font-size:13px;display:flex;align-items:center;gap:8px;transition:background .1s"
         onmouseover="this.style.background='var(--gray-50)'" onmouseout="this.style.background=''"
-        onclick="selectLicenseHolder('${escHtml(r.name)}')">
+        onclick="selectLicenseHolder('${escJsAttr(r.name)}')">
         <span>${icon}</span>
         <div style="flex:1;min-width:0">
           <strong>${escHtml(r.name)}</strong>
@@ -6254,7 +6270,7 @@ function renderHolderResults(results, container) {
     if (!exactExisting) {
       html += `<div style="padding:10px 12px;cursor:pointer;border-top:2px solid var(--gray-200);font-size:13px;display:flex;align-items:center;gap:8px;background:#f0f9ff;color:#075985"
         onmouseover="this.style.background='#e0f2fe'" onmouseout="this.style.background='#f0f9ff'"
-        onclick="holderAddInlineEmployee('${escHtml(typed)}')">
+        onclick="holderAddInlineEmployee('${escJsAttr(typed)}')">
         <span>➕</span>
         <strong style="flex:1">+ Add "${escHtml(typed)}" as a non-365 employee</strong>
       </div>`;
