@@ -1172,6 +1172,12 @@
             <textarea id="lic_renewalInstructions" placeholder="e.g. Katie uses her personal login for this board. Renewal emails go to Jenn. Must print and mail a copy after online submission." style="min-height:120px"></textarea>
           </div>
           <div class="form-group full-width">
+            <label>Current License Copy</label>
+            <div id="lic_currentFilePreview" style="margin-bottom:8px"></div>
+            <input type="file" id="lic_file" accept=".pdf,.png,.jpg,.jpeg,.doc,.docx">
+            <small style="color:var(--gray-400)">Upload a scan/copy of the current license (PDF, image, or document)</small>
+          </div>
+          <div class="form-group full-width">
             <label>Renewal Documents <span style="font-weight:400;color:var(--gray-400)">(past applications, filled forms, supporting docs)</span></label>
             <div id="lic_renewalDocsPreview" style="margin-bottom:8px"></div>
             <div style="display:flex;gap:8px;align-items:center;flex-wrap:nowrap">
@@ -1205,12 +1211,6 @@
           <div class="form-group full-width">
             <label>Notes</label>
             <textarea id="lic_notes" placeholder="Any additional notes..."></textarea>
-          </div>
-          <div class="form-group full-width">
-            <label>Current License Copy</label>
-            <div id="lic_currentFilePreview" style="margin-bottom:8px"></div>
-            <input type="file" id="lic_file" accept=".pdf,.png,.jpg,.jpeg,.doc,.docx">
-            <small style="color:var(--gray-400)">Upload a scan/copy of the current license (PDF, image, or document)</small>
           </div>
         </div>
         <input type="hidden" id="lic_editId">
