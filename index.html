@@ -3621,9 +3621,10 @@ function renderPersonnelTable() {
     const actionStacks = p.licenses.map(l => {
       const canEditThis = canEdit() || canEditLocation(l.location);
       const hasFile = l.licenseCopyUrl || l.licenseCopy;
-      const short = escHtml(l.state.substring(0, 18));
-      let stack = '<div style="display:flex;flex-direction:column;gap:3px;padding:3px 0;min-width:140px">';
-      stack += '<button class="btn btn-sm btn-secondary" style="font-size:11px;padding:4px 8px;white-space:nowrap" onclick="clickLicense(\''+l.id+'\')">'+short+'</button>';
+      const label = escHtml(licDisplayName(l).substring(0, 32));
+      const short = escHtml((l.licenseState || l.state || '').substring(0, 14));
+      let stack = '<div style="display:flex;flex-direction:column;gap:3px;padding:3px 0;min-width:160px">';
+      stack += '<button class="btn btn-sm btn-secondary" style="font-size:11px;padding:4px 8px;white-space:nowrap" onclick="clickLicense(\''+l.id+'\')">'+label+'</button>';
       const lowerBtns = [];
       if (hasFile) {
         lowerBtns.push('<button class="btn btn-sm btn-success" style="font-size:10px;padding:3px 6px;flex:1;white-space:nowrap" onclick="viewLicenseDocument(\''+l.id+'\')" title="View '+short+' copy">View</button>');
