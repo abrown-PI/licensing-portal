@@ -306,7 +306,8 @@
     <button class="nav-tab" data-page="inspections">Inspections/Audits</button>
     <button class="nav-tab" data-page="documents">Documents</button>
     <button class="nav-tab" data-page="renewals">Renewal Requirements</button>
-    <button class="nav-tab manager-tab" data-page="employees" style="display:none">Employees</button>
+    <!-- Employees tab removed from main nav — quick-add inline from License Holder / Employee On Site; admins access cleanup via User Management -->
+    <button class="nav-tab manager-tab" data-page="employees" style="display:none" hidden>Employees</button>
     <button class="nav-tab admin-only-tab" data-page="users" style="display:none">User Management</button>
     <button class="nav-tab admin-only-tab" data-page="audit" style="display:none">Audit Log</button>
   </div>
@@ -696,7 +697,10 @@
     <div class="card">
       <div class="card-header">
         <h2>User Management</h2>
-        <button class="btn btn-sm btn-primary" onclick="openAddUser()">+ Add User</button>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-sm btn-secondary" onclick="goToEmployeesPage()" title="Clean up non-365 Employees list">Manage Non-365 Employees</button>
+          <button class="btn btn-sm btn-primary" onclick="openAddUser()">+ Add User</button>
+        </div>
       </div>
       <div class="card-body">
         <p style="font-size:13px;color:var(--gray-500);margin-bottom:16px">Manage who can access the Licensing Portal and what they can see. Users not listed here will be denied access after sign-in.</p>
@@ -985,6 +989,46 @@
           <button type="button" class="btn btn-secondary" onclick="closeModal('renewalFormModal')">Cancel</button>
           <button type="button" class="btn btn-danger btn-sm" id="deleteRenewalBtn" onclick="deleteCurrentRenewal()" style="display:none">Delete</button>
           <button type="submit" class="btn btn-primary">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- QUICK-ADD EMPLOYEE MODAL (from License Holder / Employee On Site inline) -->
+<div class="modal-overlay" id="quickEmployeeModal" style="z-index:260">
+  <div class="modal" style="max-width:460px">
+    <div class="modal-header">
+      <h2>Add Non-365 Employee</h2>
+      <button class="modal-close" onclick="closeModal('quickEmployeeModal')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:var(--radius);padding:10px 12px;margin-bottom:14px;font-size:12px;color:#713f12;line-height:1.4">
+        Only use this for people <strong>without</strong> a Microsoft 365 account. 365 users already appear in the search above — cancel and keep typing if you see a match.
+      </div>
+      <form id="quickEmployeeForm" onsubmit="saveQuickEmployee(event)">
+        <div class="form-grid">
+          <div class="form-group full-width">
+            <label>Full Name *</label>
+            <input type="text" id="qe_name" required placeholder="e.g. Jane Smith" oninput="checkQuickEmployeeAgainstAD()">
+            <div id="qe_adWarning" style="display:none;margin-top:6px;padding:8px 10px;background:#fef2f2;border:1px solid #fecaca;border-radius:var(--radius);font-size:12px;color:#991b1b"></div>
+          </div>
+          <div class="form-group">
+            <label>Email</label>
+            <input type="email" id="qe_email" placeholder="optional">
+          </div>
+          <div class="form-group">
+            <label>Office Location *</label>
+            <select id="qe_office" required></select>
+          </div>
+          <div class="form-group full-width">
+            <label>Job Title</label>
+            <input type="text" id="qe_jobTitle" placeholder="e.g. Pharmacy Technician">
+          </div>
+        </div>
+        <div class="form-actions">
+          <button type="button" class="btn btn-secondary" onclick="closeModal('quickEmployeeModal')">Cancel</button>
+          <button type="submit" class="btn btn-primary">Add & Select</button>
         </div>
       </form>
     </div>
@@ -5267,6 +5311,102 @@ function populateEmployeeOfficeSelect(selected) {
   }).join('');
 }
 
+// Admin shortcut: jump to the (otherwise-hidden) Employees page for cleanup
+function goToEmployeesPage() {
+  if (!canManageEmployees()) { showToast('Not allowed', 'error'); return; }
+  document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  const page = document.getElementById('page-employees');
+  if (page) page.classList.add('active');
+  loadEmployees().then(renderEmployeeTable);
+}
+
+// ===== QUICK-ADD EMPLOYEE (inline from License Holder / Employee On Site) =====
+let quickEmployeeCallback = null; // invoked with the new employee's displayName after save
+
+function openQuickEmployee(initialName, callback) {
+  if (!canManageEmployees()) { showToast('Only admins and location managers can add employees', 'error'); return; }
+  if (!spConnected || !spListIds[SP_LIST_EMPLOYEES]) { showToast('SharePoint not connected — cannot add employees right now', 'error'); return; }
+  quickEmployeeCallback = callback || null;
+  document.getElementById('quickEmployeeForm').reset();
+  document.getElementById('qe_name').value = initialName || '';
+  document.getElementById('qe_adWarning').style.display = 'none';
+  // Populate office select — managers see only their assigned locations
+  const sel = document.getElementById('qe_office');
+  const locs = (userRole === ROLES.LOCATION_MANAGER) ? userLocations : LOCATIONS;
+  sel.innerHTML = '<option value="">— Select location —</option>' + locs.map(loc => `<option value="${escHtml(loc)}">${escHtml(loc)}</option>`).join('');
+  openModal('quickEmployeeModal');
+  if (initialName) checkQuickEmployeeAgainstAD();
+}
+
+function checkQuickEmployeeAgainstAD() {
+  const name = document.getElementById('qe_name').value.trim();
+  const warn = document.getElementById('qe_adWarning');
+  if (!warn) return;
+  if (name.length < 2) { warn.style.display = 'none'; return; }
+  clearTimeout(empAdCheckTimeout);
+  empAdCheckTimeout = setTimeout(async () => {
+    const matches = await lookupADByName(name);
+    if (!matches.length) { warn.style.display = 'none'; return; }
+    const top = matches[0];
+    const email = top.mail || top.userPrincipalName || '';
+    warn.innerHTML = '⚠ <strong>' + escHtml(top.displayName) + '</strong> already has a 365 account'
+      + (email ? ' (' + escHtml(email) + ')' : '')
+      + '. Cancel and pick them from the search above.';
+    warn.style.display = 'block';
+  }, 350);
+}
+
+async function saveQuickEmployee(ev) {
+  ev.preventDefault();
+  if (!canManageEmployees()) return;
+  if (!spConnected || !spListIds[SP_LIST_EMPLOYEES]) { showToast('SharePoint not connected', 'error'); return; }
+
+  const displayName = document.getElementById('qe_name').value.trim();
+  const email = document.getElementById('qe_email').value.trim().toLowerCase();
+  const officeLocation = document.getElementById('qe_office').value;
+  const jobTitle = document.getElementById('qe_jobTitle').value.trim();
+
+  if (!displayName || !officeLocation) { showToast('Name and office location are required', 'error'); return; }
+  if (userRole === ROLES.LOCATION_MANAGER && !userLocations.includes(officeLocation)) {
+    showToast('You can only add employees at your assigned locations', 'error');
+    return;
+  }
+
+  // Block if a 365 user already matches
+  const adMatches = await lookupADByName(displayName);
+  const exact = adMatches.find(u => (u.displayName || '').toLowerCase() === displayName.toLowerCase()
+    || ((u.mail || u.userPrincipalName || '').toLowerCase() === email && email));
+  if (exact) {
+    const warn = document.getElementById('qe_adWarning');
+    const exactEmail = exact.mail || exact.userPrincipalName || '';
+    warn.innerHTML = '❌ <strong>' + escHtml(exact.displayName) + '</strong> already exists in 365'
+      + (exactEmail ? ' (' + escHtml(exactEmail) + ')' : '')
+      + '. Cancel and pick them from the search above.';
+    warn.style.display = 'block';
+    showToast('Already in 365 — pick from the search instead', 'error');
+    return;
+  }
+
+  const fields = {
+    Title: displayName,
+    DisplayName: displayName,
+    Email: email,
+    OfficeLocation: officeLocation,
+    JobTitle: jobTitle,
+    Notes: ''
+  };
+  const result = await spCreateItem(SP_LIST_EMPLOYEES, fields);
+  if (!result) return;
+  logAudit('create', 'employee', displayName, 'Quick-added from ' + (quickEmployeeCallback ? 'form' : 'nav') + ' at ' + officeLocation, '');
+  await loadEmployees();
+  closeModal('quickEmployeeModal');
+  showToast('Employee added', 'success');
+  const cb = quickEmployeeCallback;
+  quickEmployeeCallback = null;
+  if (cb) cb(displayName);
+}
+
 function openAddEmployee() {
   if (!canManageEmployees()) { showToast('Not allowed', 'error'); return; }
   document.getElementById('employeeFormTitle').textContent = 'Add Employee';
@@ -5833,26 +5973,46 @@ function searchInspEmployee() {
 }
 
 function renderInspEmployeeResults(results, container) {
+  const typed = (document.getElementById('insp_employee')?.value || '').trim();
+  let html = '';
   if (!results.length) {
-    container.innerHTML = '<div style="padding:10px;font-size:13px;color:var(--gray-400)">No matches — keep typing, or enter a name free-text</div>';
-    container.style.display = 'block';
-    return;
+    html = '<div style="padding:10px;font-size:13px;color:var(--gray-400)">No matches — keep typing</div>';
+  } else {
+    html = results.slice(0, 15).map(r => {
+      const icon = r.type === '365' ? '👤' : r.type === 'employee' ? '🧑' : '📋';
+      const label = r.type === '365' ? 'Office 365' : r.type === 'employee' ? 'Employee' : 'Prior';
+      return `<div style="padding:8px 12px;cursor:pointer;border-bottom:1px solid var(--gray-100);font-size:13px;display:flex;align-items:center;gap:8px"
+        onmouseover="this.style.background='var(--gray-50)'" onmouseout="this.style.background=''"
+        onclick="selectInspEmployee('${escHtml(r.name)}')">
+        <span>${icon}</span>
+        <div style="flex:1;min-width:0">
+          <strong>${escHtml(r.name)}</strong>
+          ${r.sub ? '<div style="font-size:11px;color:var(--gray-500)">'+escHtml(r.sub)+'</div>' : ''}
+        </div>
+        <span style="font-size:10px;color:var(--gray-400);background:var(--gray-100);padding:2px 6px;border-radius:4px">${label}</span>
+      </div>`;
+    }).join('');
   }
-  container.innerHTML = results.slice(0, 15).map(r => {
-    const icon = r.type === '365' ? '👤' : r.type === 'employee' ? '🧑' : '📋';
-    const label = r.type === '365' ? 'Office 365' : r.type === 'employee' ? 'Employee' : 'Prior';
-    return `<div style="padding:8px 12px;cursor:pointer;border-bottom:1px solid var(--gray-100);font-size:13px;display:flex;align-items:center;gap:8px"
-      onmouseover="this.style.background='var(--gray-50)'" onmouseout="this.style.background=''"
-      onclick="selectInspEmployee('${escHtml(r.name)}')">
-      <span>${icon}</span>
-      <div style="flex:1;min-width:0">
-        <strong>${escHtml(r.name)}</strong>
-        ${r.sub ? '<div style="font-size:11px;color:var(--gray-500)">'+escHtml(r.sub)+'</div>' : ''}
-      </div>
-      <span style="font-size:10px;color:var(--gray-400);background:var(--gray-100);padding:2px 6px;border-radius:4px">${label}</span>
-    </div>`;
-  }).join('');
+  if (canManageEmployees() && typed.length >= 2) {
+    const exactExisting = results.some(r => r.name.toLowerCase() === typed.toLowerCase());
+    if (!exactExisting) {
+      html += `<div style="padding:10px 12px;cursor:pointer;border-top:2px solid var(--gray-200);font-size:13px;display:flex;align-items:center;gap:8px;background:#f0f9ff;color:#075985"
+        onmouseover="this.style.background='#e0f2fe'" onmouseout="this.style.background='#f0f9ff'"
+        onclick="inspAddInlineEmployee('${escHtml(typed)}')">
+        <span>➕</span>
+        <strong style="flex:1">+ Add "${escHtml(typed)}" as a non-365 employee</strong>
+      </div>`;
+    }
+  }
+  container.innerHTML = html;
   container.style.display = 'block';
+}
+
+function inspAddInlineEmployee(initialName) {
+  document.getElementById('insp_employeeResults').style.display = 'none';
+  openQuickEmployee(initialName, (newName) => {
+    selectInspEmployee(newName);
+  });
 }
 
 function selectInspEmployee(name) {
@@ -5982,27 +6142,48 @@ function searchLicenseHolder() {
 }
 
 function renderHolderResults(results, container) {
+  const typed = (document.getElementById('lic_holder')?.value || '').trim();
+  let html = '';
   if (!results.length) {
-    container.innerHTML = '<div style="padding:10px;font-size:13px;color:var(--gray-400)">No matches — type to search employees and locations</div>';
-    container.style.display = 'block';
-    return;
+    html = '<div style="padding:10px;font-size:13px;color:var(--gray-400)">No matches — type to search employees and locations</div>';
+  } else {
+    html = results.slice(0, 15).map(r => {
+      const icon = r.type === 'location' ? '🏥' : r.type === '365' ? '👤' : r.type === 'employee' ? '🧑' : '📋';
+      const label = r.type === 'location' ? 'Location' : r.type === '365' ? 'Office 365' : r.type === 'employee' ? 'Employee' : 'Existing';
+      return `<div style="padding:8px 12px;cursor:pointer;border-bottom:1px solid var(--gray-100);font-size:13px;display:flex;align-items:center;gap:8px;transition:background .1s"
+        onmouseover="this.style.background='var(--gray-50)'" onmouseout="this.style.background=''"
+        onclick="selectLicenseHolder('${escHtml(r.name)}')">
+        <span>${icon}</span>
+        <div style="flex:1;min-width:0">
+          <strong>${escHtml(r.name)}</strong>
+          ${r.sub ? '<div style="font-size:11px;color:var(--gray-500)">'+escHtml(r.sub)+'</div>' : ''}
+        </div>
+        <span style="font-size:10px;color:var(--gray-400);background:var(--gray-100);padding:2px 6px;border-radius:4px">${label}</span>
+      </div>`;
+    }).join('');
   }
-
-  container.innerHTML = results.slice(0, 15).map(r => {
-    const icon = r.type === 'location' ? '🏥' : r.type === '365' ? '👤' : r.type === 'employee' ? '🧑' : '📋';
-    const label = r.type === 'location' ? 'Location' : r.type === '365' ? 'Office 365' : r.type === 'employee' ? 'Employee' : 'Existing';
-    return `<div style="padding:8px 12px;cursor:pointer;border-bottom:1px solid var(--gray-100);font-size:13px;display:flex;align-items:center;gap:8px;transition:background .1s"
-      onmouseover="this.style.background='var(--gray-50)'" onmouseout="this.style.background=''"
-      onclick="selectLicenseHolder('${escHtml(r.name)}')">
-      <span>${icon}</span>
-      <div style="flex:1;min-width:0">
-        <strong>${escHtml(r.name)}</strong>
-        ${r.sub ? '<div style="font-size:11px;color:var(--gray-500)">'+escHtml(r.sub)+'</div>' : ''}
-      </div>
-      <span style="font-size:10px;color:var(--gray-400);background:var(--gray-100);padding:2px 6px;border-radius:4px">${label}</span>
-    </div>`;
-  }).join('');
+  // "+ Add new non-365 employee" — always offered if the typed name doesn't exactly match a shown 365 result
+  if (canManageEmployees() && typed.length >= 2) {
+    const exactExisting = results.some(r => r.name.toLowerCase() === typed.toLowerCase());
+    if (!exactExisting) {
+      html += `<div style="padding:10px 12px;cursor:pointer;border-top:2px solid var(--gray-200);font-size:13px;display:flex;align-items:center;gap:8px;background:#f0f9ff;color:#075985"
+        onmouseover="this.style.background='#e0f2fe'" onmouseout="this.style.background='#f0f9ff'"
+        onclick="holderAddInlineEmployee('${escHtml(typed)}')">
+        <span>➕</span>
+        <strong style="flex:1">+ Add "${escHtml(typed)}" as a non-365 employee</strong>
+      </div>`;
+    }
+  }
+  container.innerHTML = html;
   container.style.display = 'block';
+}
+
+function holderAddInlineEmployee(initialName) {
+  document.getElementById('lic_holderResults').style.display = 'none';
+  openQuickEmployee(initialName, (newName) => {
+    // After the new employee is saved, auto-select them as the license holder
+    selectLicenseHolder(newName);
+  });
 }
 
 function selectLicenseHolder(name) {
