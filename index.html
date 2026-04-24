@@ -3617,30 +3617,40 @@ function renderPersonnelTable() {
     const nextExp = p.licenses.filter(l => l.expirationDate && daysUntilExp(l.expirationDate) >= 0)
       .sort((a,b) => new Date(a.expirationDate) - new Date(b.expirationDate))[0];
     const days = nextExp ? daysUntilExp(nextExp.expirationDate) : 999;
-    const licLinks = p.licenses.map(l => '<span style="cursor:pointer;color:var(--primary);font-size:12px" onclick="clickLicense(\''+l.id+'\')">' + escHtml(l.state.substring(0,20)) + '</span>').join(', ');
-    const docBtns = p.licenses.filter(l => l.licenseCopyUrl || l.licenseCopy).map(l => {
-      return '<button class="btn btn-sm btn-success" style="font-size:10px;margin:2px;padding:2px 6px" onclick="viewLicenseDocument(\''+l.id+'\')">'
-        + escHtml(l.state.substring(0,12)) + '</button>';
-    }).join('');
-    const uploadBtns = p.licenses.filter(l => canEdit() || canEditLocation(l.location)).map(l => {
+    const licLinks = p.licenses.map(l => '<div style="margin-bottom:2px"><span style="cursor:pointer;color:var(--primary);font-size:12px" onclick="clickLicense(\''+l.id+'\')">' + escHtml(l.state) + '</span></div>').join('');
+
+    // Per-license action stack: edit on top, view + upload below
+    const actionStacks = p.licenses.map(l => {
+      const canEditThis = canEdit() || canEditLocation(l.location);
       const hasFile = l.licenseCopyUrl || l.licenseCopy;
-      return '<label class="btn btn-sm btn-'+(hasFile ? 'secondary' : 'primary')+'" style="font-size:10px;cursor:pointer;margin:2px;padding:2px 6px">'
-        + escHtml(l.state.substring(0,12)) + ' ' + (hasFile ? '&#10003;' : '&#8593;')
-        + '<input type="file" accept=".pdf,.png,.jpg,.jpeg,.doc,.docx" style="display:none" onchange="quickUploadLicenseCopy(\''+l.id+'\', this)">'
-        + '</label>';
+      const short = escHtml(l.state.substring(0, 14));
+      let stack = '<div style="display:flex;flex-direction:column;gap:3px;padding:3px 0">';
+      if (canEditThis) {
+        stack += '<button class="btn btn-sm btn-secondary" style="font-size:10px;padding:3px 6px" onclick="clickLicense(\''+l.id+'\')">Edit '+short+'</button>';
+      }
+      const lowerBtns = [];
+      if (hasFile) {
+        lowerBtns.push('<button class="btn btn-sm btn-success" style="font-size:10px;padding:3px 6px;flex:1" onclick="viewLicenseDocument(\''+l.id+'\')" title="View '+short+' copy">View</button>');
+      }
+      if (canEditThis) {
+        lowerBtns.push('<label class="btn btn-sm btn-'+(hasFile ? 'secondary' : 'primary')+'" style="font-size:10px;cursor:pointer;padding:3px 6px;flex:1" title="Upload '+short+' copy">'
+          + (hasFile ? 'Replace &#10003;' : 'Upload &#8593;')
+          + '<input type="file" accept=".pdf,.png,.jpg,.jpeg,.doc,.docx" style="display:none" onchange="quickUploadLicenseCopy(\''+l.id+'\', this)">'
+          + '</label>');
+      }
+      if (lowerBtns.length) stack += '<div style="display:flex;gap:3px">' + lowerBtns.join('') + '</div>';
+      stack += '</div>';
+      return stack;
     }).join('');
-    const editBtns = p.licenses.filter(l => canEdit() || canEditLocation(l.location)).map(l => {
-      return '<button class="btn btn-sm btn-secondary" style="font-size:10px;margin:2px;padding:2px 6px" onclick="clickLicense(\''+l.id+'\')">'
-        + 'Edit ' + escHtml(l.state.substring(0,12)) + '</button>';
-    }).join('');
+
     return `<tr>
       <td><strong>${p.name}</strong></td>
       <td>${p.role}</td>
       <td>${[...p.locations].join(', ')}</td>
-      <td>${licLinks}</td>
+      <td style="min-width:220px">${licLinks}</td>
       <td>${nextExp ? formatDate(nextExp.expirationDate) : 'N/A'}</td>
       <td>${urgencyBadge(days, nextExp ? nextExp.expirationDate : '')}</td>
-      <td style="white-space:nowrap">${docBtns}${editBtns}${uploadBtns}</td>
+      <td><div style="display:flex;flex-wrap:wrap;gap:6px">${actionStacks}</div></td>
     </tr>`;
   }).join('');
 
