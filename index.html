@@ -464,7 +464,7 @@
         <button class="btn btn-sm btn-primary admin-edit-btn" onclick="openAddLicense()">+ Add License</button>
       </div>
       <div class="card-body">
-        <div class="table-controls">
+        <div class="table-controls" style="flex-wrap:wrap;gap:8px">
           <div class="search-box">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
             <input type="text" id="personnelSearch" placeholder="Search personnel..." oninput="renderPersonnelTable()">
@@ -472,6 +472,37 @@
           <select class="filter-select" id="personnelLocationFilter" onchange="renderPersonnelTable()">
             <option value="">All Locations</option>
           </select>
+          <select class="filter-select" id="personnelRoleFilter" onchange="renderPersonnelTable()">
+            <option value="">All Roles</option>
+            <option value="Pharmacist">Pharmacist</option>
+            <option value="Technician">Technician</option>
+            <option value="Certificate Holder">Certificate Holder</option>
+          </select>
+          <select class="filter-select" id="personnelStatusFilter" onchange="renderPersonnelTable()">
+            <option value="">All Renewal Statuses</option>
+            <option value="CURRENT">Current</option>
+            <option value="SUBMITTED-WAITING">Submitted - Waiting</option>
+            <option value="NEEDS DONE ASAP">Needs Done ASAP</option>
+            <option value="NEED INFO">Need Info</option>
+            <option value="NEEDS DONE NEXT 3 MONTHS">Needs Done Next 3 Months</option>
+            <option value="LAPSED">Lapsed</option>
+          </select>
+          <select class="filter-select" id="personnelTypeFilter" onchange="renderPersonnelTable()">
+            <option value="">All License Types</option>
+            <option value="Pharmacist">Pharmacist</option>
+            <option value="Technician">Technician</option>
+            <option value="Certificate">Certificate</option>
+            <option value="Pharmacy">Pharmacy</option>
+            <option value="DEA">DEA</option>
+            <option value="Controlled Substance">Controlled Substance</option>
+            <option value="Sterile Compounding">Sterile Compounding</option>
+            <option value="Hemp">Hemp</option>
+            <option value="Pseudoephedrine">Pseudoephedrine</option>
+            <option value="Medicaid">Medicaid</option>
+            <option value="Business">Business</option>
+            <option value="Other">Other</option>
+          </select>
+          <button class="btn btn-sm btn-secondary" onclick="clearPersonnelFilters()">Clear</button>
         </div>
         <div class="table-responsive">
           <table class="data-table" id="personnelTable">
@@ -3598,9 +3629,37 @@ async function saveLicense(e) {
 }
 
 // ===== PERSONNEL =====
+// Auto-derive a display-only renewal status from expiration date when user hasn't set one.
+// Manually-set statuses (Submitted - Waiting, Need Info) are preserved — user intent wins.
+function effectiveRenewalStatus(l) {
+  const manual = (l.renewalStatus || '').toUpperCase();
+  // Respect manual intent-signaling statuses
+  if (manual === 'SUBMITTED-WAITING' || manual === 'NEED INFO') return manual;
+  if (!l.expirationDate) return manual || 'CURRENT';
+  const days = daysUntilExp(l.expirationDate);
+  if (days < 0) return 'LAPSED';
+  if (days <= 30) return 'NEEDS DONE ASAP';
+  if (days <= 90) return 'NEEDS DONE NEXT 3 MONTHS';
+  // If user manually set something urgent (Lapsed / Needs Done ASAP / Needs Done Next 3 Months)
+  // for a license that's still far out, keep the manual value too
+  if (manual === 'LAPSED' || manual === 'NEEDS DONE ASAP' || manual === 'NEEDS DONE NEXT 3 MONTHS') return manual;
+  return 'CURRENT';
+}
+
+function clearPersonnelFilters() {
+  ['personnelSearch','personnelLocationFilter','personnelRoleFilter','personnelStatusFilter','personnelTypeFilter'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+  renderPersonnelTable();
+}
+
 function renderPersonnelTable() {
   const search = document.getElementById('personnelSearch').value.toLowerCase();
   const locFilter = document.getElementById('personnelLocationFilter').value;
+  const roleFilter = (document.getElementById('personnelRoleFilter') || {}).value || '';
+  const statusFilter = (document.getElementById('personnelStatusFilter') || {}).value || '';
+  const typeFilter = (document.getElementById('personnelTypeFilter') || {}).value || '';
 
   // Build personnel from license holders
   const personnelMap = {};
@@ -3610,6 +3669,7 @@ function renderPersonnelTable() {
     if (!l.licenseHolder) return;
     if (FACILITY_TYPES.has(l.type)) return; // facility/entity license, not a person
     if (l.archived) return;
+    if (typeFilter && l.type !== typeFilter) return;
     const holder = l.licenseHolder.trim();
     // Skip holder names that match a location, DBA, or business name
     const holderLower = holder.toLowerCase();
@@ -3642,6 +3702,10 @@ function renderPersonnelTable() {
   let personnel = Object.values(personnelMap);
   if (search) personnel = personnel.filter(p => p.name.toLowerCase().includes(search));
   if (locFilter) personnel = personnel.filter(p => p.locations.has(locFilter));
+  if (roleFilter) personnel = personnel.filter(p => p.role === roleFilter);
+  if (statusFilter) {
+    personnel = personnel.filter(p => p.licenses.some(l => effectiveRenewalStatus(l) === statusFilter));
+  }
   personnel.sort((a, b) => a.name.localeCompare(b.name));
 
   // Rank renewal statuses by urgency (worst first)
@@ -3683,7 +3747,7 @@ function renderPersonnelTable() {
     let worstRank = RENEWAL_STATUS_RANK['CURRENT'];
     let worstLicense = null;
     p.licenses.forEach(l => {
-      const key = (l.renewalStatus || '').toUpperCase();
+      const key = effectiveRenewalStatus(l);
       const rank = RENEWAL_STATUS_RANK[key] != null ? RENEWAL_STATUS_RANK[key] : 5;
       if (rank < worstRank) { worstRank = rank; worstStatusKey = key; worstLicense = l; }
     });
