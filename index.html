@@ -6078,22 +6078,28 @@ function searchLicenseHolder() {
   const q = (document.getElementById('lic_holder').value || '').trim();
   const container = document.getElementById('lic_holderResults');
 
-  if (q.length < 1) { container.style.display = 'none'; return; }
-
   // Build results: locations + existing holders + 365 users
   let results = [];
+  const ql = q.toLowerCase();
 
   // 1. Pharmacy locations (the pharmacy itself may hold the license)
-  const ql = q.toLowerCase();
+  // Always shown when the field is empty so picking "pharmacy holds this license" is one click.
   LOCATIONS.forEach(loc => {
     const info = LOCATION_INFO[loc] || {};
     const dba = info.dba || loc;
-    const displayName = dba + ' - ' + loc;
+    // Prefer the business name if one exists — that's what boards actually list as the holder
+    const displayName = info.businessName || dba;
     const searchStr = (loc + ' ' + (info.dba || '') + ' ' + (info.businessName || '')).toLowerCase();
-    if (searchStr.includes(ql)) {
-      results.push({ name: displayName, type: 'location', sub: info.businessName || '' });
+    if (!ql || searchStr.includes(ql)) {
+      results.push({ name: displayName, type: 'location', sub: loc });
     }
   });
+
+  if (q.length < 1) {
+    // Empty field: just show locations so picking the pharmacy is one click
+    renderHolderResults(results, container);
+    return;
+  }
 
   // 2. Manually-added employees (non-365)
   employees.forEach(emp => {
