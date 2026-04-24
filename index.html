@@ -699,6 +699,7 @@
         <h2>User Management</h2>
         <div style="display:flex;gap:8px">
           <button class="btn btn-sm btn-secondary" onclick="goToEmployeesPage()" title="Clean up non-365 Employees list">Manage Non-365 Employees</button>
+          <button class="btn btn-sm btn-secondary" onclick="normalizeLocationHolders()" title="Rewrite location-as-holder values to the new 'DBA - City' format">Normalize Location Holders</button>
           <button class="btn btn-sm btn-primary" onclick="openAddUser()">+ Add User</button>
         </div>
       </div>
@@ -5311,6 +5312,83 @@ function populateEmployeeOfficeSelect(selected) {
     const s = (loc === selected) ? ' selected' : '';
     return `<option value="${escHtml(loc)}"${s}>${escHtml(loc)}</option>`;
   }).join('');
+}
+
+// Given a holder string, return the matching location label if it's any form of a location, else null
+function detectLocationFromHolder(holder) {
+  if (!holder) return null;
+  const holderLower = holder.trim().toLowerCase();
+  for (const loc of LOCATIONS) {
+    const info = LOCATION_INFO[loc] || {};
+    const dba = (info.dba || info.businessName || 'Pharmacy Innovations').toLowerCase();
+    const business = (info.businessName || '').toLowerCase();
+    const locLower = loc.toLowerCase();
+    const cityOnly = loc.split(',')[0].trim().toLowerCase();
+    const candidates = [
+      locLower,
+      cityOnly,
+      dba,
+      business,
+      dba + ' - ' + cityOnly,
+      dba + ' - ' + locLower,
+      (info.dba || '').toLowerCase() + ' - ' + locLower, // old "DBA - Erie, PA" form
+      (info.dba || '').toLowerCase() + ' - ' + cityOnly
+    ].filter(Boolean);
+    if (candidates.includes(holderLower)) return loc;
+  }
+  return null;
+}
+
+function canonicalLocationHolder(loc) {
+  const info = LOCATION_INFO[loc] || {};
+  const dba = info.dba || info.businessName || 'Pharmacy Innovations';
+  const city = loc.split(',')[0].trim();
+  return dba + ' - ' + city;
+}
+
+async function normalizeLocationHolders() {
+  if (!canEdit()) { showToast('Admins only', 'error'); return; }
+  if (!spConnected) { showToast('SharePoint not connected', 'error'); return; }
+
+  // Dry-run: build the list of changes so the user can approve the count
+  const changes = [];
+  licenses.forEach(l => {
+    if (!l.licenseHolder) return;
+    const loc = detectLocationFromHolder(l.licenseHolder);
+    if (!loc) return;
+    const canonical = canonicalLocationHolder(loc);
+    if (l.licenseHolder === canonical) return; // already normalized
+    changes.push({ lic: l, from: l.licenseHolder, to: canonical });
+  });
+
+  if (!changes.length) {
+    showToast('All location-held licenses already use the canonical format', 'info');
+    return;
+  }
+
+  const preview = changes.slice(0, 5).map(c => '  "' + c.from + '" → "' + c.to + '"').join('\n');
+  const more = changes.length > 5 ? '\n  ...and ' + (changes.length - 5) + ' more' : '';
+  if (!confirm('Rewrite ' + changes.length + ' license holder' + (changes.length === 1 ? '' : 's') + ' to the "DBA - City" format?\n\n' + preview + more)) return;
+
+  showToast('Normalizing ' + changes.length + ' license holders...', 'info');
+  let ok = 0;
+  let fail = 0;
+  for (const c of changes) {
+    const before = c.lic.licenseHolder;
+    c.lic.licenseHolder = c.to;
+    const success = await spSaveLicense(c.lic);
+    if (success) {
+      ok++;
+      logAudit('update', 'license', licDisplayName(c.lic) + ' (' + c.lic.location + ')', 'Normalized holder "' + before + '" → "' + c.to + '"', c.lic.spItemId || c.lic.id);
+    } else {
+      fail++;
+      c.lic.licenseHolder = before; // roll back the in-memory change if SP rejected it
+    }
+  }
+  saveLocalCache();
+  renderAll();
+  if (fail === 0) showToast('Updated ' + ok + ' license holder' + (ok === 1 ? '' : 's'), 'success');
+  else showToast('Updated ' + ok + ', failed ' + fail + ' — see console', 'error');
 }
 
 // Admin shortcut: jump to the (otherwise-hidden) Employees page for cleanup
