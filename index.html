@@ -498,7 +498,7 @@
     <div class="card">
       <div class="card-header">
         <h2>Inspections & Audits</h2>
-        <button class="btn btn-sm btn-primary admin-edit-btn" onclick="openAddInspection()">+ Add Inspection</button>
+        <button class="btn btn-sm btn-primary admin-edit-btn" onclick="openAddInspection()">+ Add Inspection/Audit</button>
       </div>
       <div class="card-body">
         <div class="table-controls">
@@ -514,7 +514,7 @@
         </div>
         <div id="inspectionsList"></div>
         <div class="empty-state" id="noInspections">
-          <p>No inspections recorded yet. Click "+ Add Inspection" to add one.</p>
+          <p>No inspections recorded yet. Click "+ Add Inspection/Audit" to add one.</p>
         </div>
       </div>
     </div>
@@ -1253,12 +1253,23 @@
             </select>
           </div>
           <div class="form-group">
-            <label>Inspector / Board</label>
-            <input type="text" id="insp_inspector" placeholder="Inspector name or board">
+            <label>Inspector Name / Board</label>
+            <input type="text" id="insp_inspector" placeholder="e.g. J. Smith — TX Board of Pharmacy">
           </div>
           <div class="form-group">
+            <label>Employee On Site</label>
+            <input type="text" id="insp_employee" placeholder="Who from our team was present" autocomplete="off">
+            <div id="insp_employeeResults" style="display:none;position:absolute;background:white;border:1px solid var(--gray-300);border-radius:var(--radius);max-height:180px;overflow-y:auto;z-index:10;box-shadow:var(--shadow-md);min-width:260px"></div>
+          </div>
+          <div class="form-group full-width" style="position:relative">
             <label>Related License</label>
-            <input type="text" id="insp_license" placeholder="License # or state">
+            <input type="text" id="insp_license" placeholder="Search license by state, number, or type..." autocomplete="off" oninput="searchRelatedLicense()" onfocus="searchRelatedLicense()">
+            <input type="hidden" id="insp_licenseId">
+            <div id="insp_licenseResults" style="display:none;position:absolute;top:100%;left:0;right:0;background:white;border:1px solid var(--gray-300);border-radius:var(--radius);max-height:220px;overflow-y:auto;z-index:10;box-shadow:var(--shadow-md)"></div>
+          </div>
+          <div class="form-group full-width">
+            <label>Purpose</label>
+            <textarea id="insp_purpose" placeholder="Why this inspection/audit was conducted (e.g. renewal, routine, follow-up, complaint response)" style="min-height:60px"></textarea>
           </div>
           <div class="form-group full-width">
             <label>Notes / Findings</label>
@@ -1945,7 +1956,10 @@ async function spCreateLists() {
       { name: 'InspDate', text: {} },
       { name: 'Result', text: {} },
       { name: 'Inspector', text: {} },
+      { name: 'EmployeeOnSite', text: {} },
+      { name: 'Purpose', text: { allowMultipleLines: true } },
       { name: 'RelatedLicense', text: {} },
+      { name: 'RelatedLicenseId', text: {} },
       { name: 'Notes', text: { allowMultipleLines: true } },
       { name: 'FollowupDate', text: {} },
       { name: 'InspDocs', text: {} }
@@ -2237,7 +2251,10 @@ function inspectionToSpFields(i) {
     InspDate: i.date || '',
     Result: i.result || '',
     Inspector: i.inspector || '',
+    EmployeeOnSite: i.employeeOnSite || '',
+    Purpose: i.purpose || '',
     RelatedLicense: i.relatedLicense || '',
+    RelatedLicenseId: i.relatedLicenseId != null ? String(i.relatedLicenseId) : '',
     Notes: i.notes || '',
     FollowupDate: i.followupDate || '',
     InspDocs: JSON.stringify((i.inspDocs || []).map(d => { const c = {...d}; delete c.dataUrl; return c; }))
@@ -2254,7 +2271,10 @@ function spFieldsToInspection(item) {
     date: f.InspDate || '',
     result: f.Result || '',
     inspector: f.Inspector || '',
+    employeeOnSite: f.EmployeeOnSite || '',
+    purpose: f.Purpose || '',
     relatedLicense: f.RelatedLicense || '',
+    relatedLicenseId: f.RelatedLicenseId || '',
     notes: f.Notes || '',
     followupDate: f.FollowupDate || '',
     inspDocs: f.InspDocs ? JSON.parse(f.InspDocs) : []
@@ -3260,6 +3280,43 @@ function openLicenseDetail(id) {
     html += `<div class="detail-section"><h3>Notes</h3><p style="font-size:14px;color:var(--gray-700)">${escHtml(l.notes)}</p></div>`;
   }
 
+  // Inspections / audits linked to this license
+  const relInsp = inspections.filter(i =>
+    (i.relatedLicenseId && String(i.relatedLicenseId) === String(l.id)) ||
+    (!i.relatedLicenseId && i.relatedLicense && (
+      i.relatedLicense.toLowerCase().includes(String(l.licenseNumber || '').toLowerCase()) && l.licenseNumber ||
+      i.relatedLicense.toLowerCase().includes((l.state || '').toLowerCase()) && l.state
+    ))
+  ).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+  const canAddInsp = canEdit() || canEditLocation(l.location);
+  html += '<div class="detail-section"><h3 style="display:flex;align-items:center;justify-content:space-between">Inspections / Audits';
+  if (canAddInsp) {
+    html += `<button class="btn btn-sm btn-primary" style="font-size:11px" onclick="closeModal('licenseDetailModal'); openAddInspection('${l.id}')">+ Add Inspection/Audit</button>`;
+  }
+  html += '</h3>';
+  if (!relInsp.length) {
+    html += '<p style="font-size:13px;color:var(--gray-400);margin:0">No inspections or audits recorded for this license yet.</p>';
+  } else {
+    relInsp.forEach(i => {
+      const resultColor = i.result === 'Passed' ? 'var(--success)' : i.result === 'Deficiencies' ? 'var(--danger)' : 'var(--gray-400)';
+      html += `<div style="padding:8px 10px;background:var(--gray-50);border-radius:var(--radius);border:1px solid var(--gray-200);margin-bottom:4px;font-size:13px">
+        <div style="display:flex;align-items:center;gap:8px">
+          <strong>${escHtml(i.type || 'Inspection')}</strong>
+          <span style="font-size:11px;color:var(--gray-500)">${formatDate(i.date) || ''}</span>
+          <span style="flex:1"></span>
+          <span style="font-size:11px;padding:2px 8px;border-radius:10px;background:${resultColor};color:white">${escHtml(i.result || 'Pending')}</span>
+          ${canAddInsp ? `<button class="btn btn-sm btn-secondary" style="font-size:10px;padding:2px 6px" onclick="closeModal('licenseDetailModal'); openEditInspection('${i.id}')">Edit</button>` : ''}
+        </div>
+        ${i.purpose ? `<div style="font-size:12px;color:var(--gray-600);margin-top:4px"><strong>Purpose:</strong> ${escHtml(i.purpose)}</div>` : ''}
+        ${i.inspector ? `<div style="font-size:12px;color:var(--gray-600)"><strong>Inspector:</strong> ${escHtml(i.inspector)}</div>` : ''}
+        ${i.employeeOnSite ? `<div style="font-size:12px;color:var(--gray-600)"><strong>Employee on site:</strong> ${escHtml(i.employeeOnSite)}</div>` : ''}
+        ${i.notes ? `<div style="font-size:12px;color:var(--gray-600);margin-top:4px">${escHtml(i.notes)}</div>` : ''}
+        ${i.followupDate ? `<div style="font-size:11px;color:var(--warning);margin-top:4px">Follow-up: ${formatDate(i.followupDate)}</div>` : ''}
+      </div>`;
+    });
+  }
+  html += '</div>';
+
   // Related documents (match by relatedLicenseId or fallback to relatedState text match)
   const relDocs = documents.filter(d =>
     (d.relatedLicenseId && String(d.relatedLicenseId) === String(l.id)) ||
@@ -3575,12 +3632,23 @@ function renderPersonnelTable() {
 }
 
 // ===== INSPECTIONS =====
-function openAddInspection() {
+function openAddInspection(prefillLicenseId) {
   document.getElementById('inspFormTitle').textContent = 'Add Inspection / Audit';
   document.getElementById('inspectionForm').reset();
   document.getElementById('insp_editId').value = '';
   document.getElementById('insp_docsPreview').innerHTML = '';
+  document.getElementById('insp_licenseId').value = '';
   populateInspLocationSelect();
+  if (prefillLicenseId) {
+    const l = licenses.find(x => String(x.id) === String(prefillLicenseId));
+    if (l) {
+      if ([...document.getElementById('insp_location').options].some(o => o.value === l.location)) {
+        document.getElementById('insp_location').value = l.location;
+      }
+      document.getElementById('insp_license').value = licDisplayName(l) + ' — ' + (l.licenseNumber || '') + ' (' + l.location + ')';
+      document.getElementById('insp_licenseId').value = l.id;
+    }
+  }
   openModal('inspectionFormModal');
 }
 
@@ -3596,7 +3664,10 @@ function openEditInspection(id) {
   document.getElementById('insp_date').value = insp.date;
   document.getElementById('insp_result').value = insp.result;
   document.getElementById('insp_inspector').value = insp.inspector || '';
+  document.getElementById('insp_employee').value = insp.employeeOnSite || '';
+  document.getElementById('insp_purpose').value = insp.purpose || '';
   document.getElementById('insp_license').value = insp.relatedLicense || '';
+  document.getElementById('insp_licenseId').value = insp.relatedLicenseId || '';
   document.getElementById('insp_notes').value = insp.notes || '';
   document.getElementById('insp_followup').value = insp.followupDate || '';
   renderInspDocsPreview(insp);
@@ -3617,7 +3688,10 @@ async function saveInspection(e) {
     date: document.getElementById('insp_date').value,
     result: document.getElementById('insp_result').value,
     inspector: document.getElementById('insp_inspector').value,
+    employeeOnSite: document.getElementById('insp_employee').value,
+    purpose: document.getElementById('insp_purpose').value,
     relatedLicense: document.getElementById('insp_license').value,
+    relatedLicenseId: document.getElementById('insp_licenseId').value,
     notes: document.getElementById('insp_notes').value,
     followupDate: document.getElementById('insp_followup').value
   };
@@ -3686,7 +3760,9 @@ function renderInspections() {
           ${(canEdit() || canEditLocation(i.location)) ? '<button class="btn btn-sm btn-secondary" style="font-size:11px" onclick="openEditInspection(\''+i.id+'\')">Edit</button>' : ''}
         </div>
       </div>
-      ${i.relatedLicense ? '<div style="font-size:13px;margin-bottom:4px">Related License: <strong>'+i.relatedLicense+'</strong></div>' : ''}
+      ${i.relatedLicense ? '<div style="font-size:13px;margin-bottom:4px">Related License: <strong>'+escHtml(i.relatedLicense)+'</strong></div>' : ''}
+      ${i.purpose ? '<div style="font-size:13px;margin-bottom:4px"><strong>Purpose:</strong> '+escHtml(i.purpose)+'</div>' : ''}
+      ${i.employeeOnSite ? '<div style="font-size:13px;margin-bottom:4px"><strong>Employee on site:</strong> '+escHtml(i.employeeOnSite)+'</div>' : ''}
       ${i.notes ? '<div style="font-size:13px;color:var(--gray-600)">'+escHtml(i.notes)+'</div>' : ''}
       ${i.followupDate ? '<div style="font-size:12px;color:var(--warning);margin-top:4px">Follow-up: '+formatDate(i.followupDate)+'</div>' : ''}
       ${docsHtml}
@@ -5119,6 +5195,55 @@ function removeRequirement(idx) {
 
 // ===== LICENSE HOLDER LOOKUP =====
 let holderSearchTimeout;
+// ===== RELATED LICENSE PICKER (for inspection form) =====
+function searchRelatedLicense() {
+  const raw = (document.getElementById('insp_license').value || '').trim();
+  if (!raw) document.getElementById('insp_licenseId').value = '';
+  const q = raw.toLowerCase();
+  const locFilter = document.getElementById('insp_location').value;
+  const container = document.getElementById('insp_licenseResults');
+  if (!container) return;
+
+  let candidates = licenses.filter(l => !l.archived);
+  if (locFilter) candidates = candidates.filter(l => l.location === locFilter);
+  if (q) {
+    candidates = candidates.filter(l =>
+      (l.state + ' ' + (l.licenseState || '') + ' ' + l.licenseNumber + ' ' + l.type + ' ' + l.location + ' ' + (l.licenseHolder || '')).toLowerCase().includes(q)
+    );
+  }
+  candidates.sort((a, b) => (a.location || '').localeCompare(b.location || '') || (a.state || '').localeCompare(b.state || ''));
+  const rows = candidates.slice(0, 20);
+  if (!rows.length) {
+    container.innerHTML = '<div style="padding:10px;font-size:13px;color:var(--gray-400)">No matching licenses at this location</div>';
+    container.style.display = 'block';
+    return;
+  }
+  container.innerHTML = rows.map(l => {
+    const label = licDisplayName(l);
+    const meta = [l.licenseNumber, l.licenseHolder, l.location].filter(Boolean).join(' · ');
+    return `<div style="padding:8px 12px;cursor:pointer;border-bottom:1px solid var(--gray-100);font-size:13px"
+      onmouseover="this.style.background='var(--gray-50)'" onmouseout="this.style.background=''"
+      onclick="selectRelatedLicense('${l.id}')">
+      <strong>${escHtml(label)}</strong>
+      <div style="font-size:11px;color:var(--gray-500)">${escHtml(meta)}</div>
+    </div>`;
+  }).join('');
+  container.style.display = 'block';
+}
+
+function selectRelatedLicense(id) {
+  const l = licenses.find(x => String(x.id) === String(id));
+  if (!l) return;
+  document.getElementById('insp_license').value = licDisplayName(l) + ' — ' + (l.licenseNumber || '') + ' (' + l.location + ')';
+  document.getElementById('insp_licenseId').value = l.id;
+  document.getElementById('insp_licenseResults').style.display = 'none';
+}
+
+document.addEventListener('click', e => {
+  const r = document.getElementById('insp_licenseResults');
+  if (r && !e.target.closest('#insp_license') && !e.target.closest('#insp_licenseResults')) r.style.display = 'none';
+});
+
 function searchLicenseHolder() {
   const q = (document.getElementById('lic_holder').value || '').trim();
   const container = document.getElementById('lic_holderResults');
