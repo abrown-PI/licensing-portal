@@ -305,6 +305,7 @@
     <button class="nav-tab" data-page="personnel">Personnel</button>
     <button class="nav-tab" data-page="inspections">Inspections</button>
     <button class="nav-tab" data-page="documents">Documents</button>
+    <button class="nav-tab" data-page="renewals">Renewal Requirements</button>
     <button class="nav-tab manager-tab" data-page="employees" style="display:none">Employees</button>
     <button class="nav-tab admin-only-tab" data-page="users" style="display:none">User Management</button>
     <button class="nav-tab admin-only-tab" data-page="audit" style="display:none">Audit Log</button>
@@ -688,6 +689,44 @@
     </div>
   </div>
 
+  <!-- RENEWAL REQUIREMENTS PAGE (All roles — view; admin edits) -->
+  <div class="page" id="page-renewals">
+    <div class="card">
+      <div class="card-header">
+        <h2>Renewal Requirements</h2>
+        <button class="btn btn-sm btn-primary admin-only-btn" onclick="openAddRenewal()">+ Add Entry</button>
+      </div>
+      <div class="card-body">
+        <p style="font-size:13px;color:var(--gray-500);margin-bottom:12px">General renewal requirements by state and license type. Always verify against the state board website before acting — rules change. Admins can edit entries.</p>
+        <div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:14px;align-items:end">
+          <div class="form-group" style="margin:0;flex:1;min-width:200px">
+            <label style="font-size:12px">Search</label>
+            <input type="text" id="renewalSearch" placeholder="State, type, keyword..." oninput="renderRenewalList()" style="width:100%;padding:6px 8px;font-size:13px">
+          </div>
+          <div class="form-group" style="margin:0">
+            <label style="font-size:12px">License Type</label>
+            <select id="renewalTypeFilter" onchange="renderRenewalList()" style="padding:6px 8px;font-size:13px">
+              <option value="">All types</option>
+              <option value="Pharmacist">Pharmacist</option>
+              <option value="Pharmacy Technician">Pharmacy Technician</option>
+              <option value="Pharmacy / Business">Pharmacy / Business</option>
+              <option value="Controlled Substance">Controlled Substance</option>
+              <option value="DEA">DEA</option>
+              <option value="Other">Other</option>
+            </select>
+          </div>
+          <div class="form-group" style="margin:0">
+            <label style="font-size:12px">State</label>
+            <select id="renewalStateFilter" onchange="renderRenewalList()" style="padding:6px 8px;font-size:13px"><option value="">All states</option></select>
+          </div>
+          <button class="btn btn-sm btn-secondary" onclick="clearRenewalFilters()" style="height:32px">Clear</button>
+        </div>
+        <div id="renewalList"></div>
+        <div id="renewalEmpty" style="text-align:center;padding:40px;color:var(--gray-500);display:none">No entries match. <span class="admin-only-btn" style="display:none">Click "+ Add Entry" to create one.</span></div>
+      </div>
+    </div>
+  </div>
+
   <!-- EMPLOYEES PAGE (Admin + Location Manager) -->
   <div class="page" id="page-employees">
     <div class="card">
@@ -831,6 +870,75 @@
           <button type="button" class="btn btn-secondary" onclick="closeModal('userFormModal')">Cancel</button>
           <button type="button" class="btn btn-danger btn-sm" id="deleteUserBtn" onclick="deleteCurrentUser()" style="display:none">Delete User</button>
           <button type="submit" class="btn btn-primary">Save User</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- ADD/EDIT RENEWAL REQUIREMENT MODAL -->
+<div class="modal-overlay" id="renewalFormModal">
+  <div class="modal" style="max-width:720px">
+    <div class="modal-header">
+      <h2 id="renewalFormTitle">Add Renewal Requirement</h2>
+      <button class="modal-close" onclick="closeModal('renewalFormModal')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <form id="renewalForm" onsubmit="saveRenewal(event)">
+        <div class="form-grid">
+          <div class="form-group">
+            <label>State *</label>
+            <select id="ren_state" required></select>
+          </div>
+          <div class="form-group">
+            <label>License Type *</label>
+            <select id="ren_type" required>
+              <option value="Pharmacist">Pharmacist</option>
+              <option value="Pharmacy Technician">Pharmacy Technician</option>
+              <option value="Pharmacy / Business">Pharmacy / Business</option>
+              <option value="Controlled Substance">Controlled Substance</option>
+              <option value="DEA">DEA</option>
+              <option value="Other">Other</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Renewal Frequency</label>
+            <input type="text" id="ren_frequency" placeholder="e.g. 2 years, annually">
+          </div>
+          <div class="form-group">
+            <label>Renewal Window</label>
+            <input type="text" id="ren_window" placeholder="e.g. 60 days before expiration">
+          </div>
+          <div class="form-group">
+            <label>Fee</label>
+            <input type="text" id="ren_fee" placeholder="e.g. $180 / 2 years">
+          </div>
+          <div class="form-group">
+            <label>Board Phone</label>
+            <input type="text" id="ren_phone" placeholder="(xxx) xxx-xxxx">
+          </div>
+          <div class="form-group full-width">
+            <label>Board Website</label>
+            <input type="text" id="ren_website" placeholder="https://...">
+          </div>
+          <div class="form-group full-width">
+            <label>CE / Education Requirement</label>
+            <textarea id="ren_ce" placeholder="e.g. 30 hours CE every 2 years, incl. 2 hrs law, 2 hrs patient safety" style="min-height:60px"></textarea>
+          </div>
+          <div class="form-group full-width">
+            <label>Renewal Instructions / Notes</label>
+            <textarea id="ren_instructions" placeholder="Step-by-step instructions, login info references, common pitfalls..." style="min-height:100px"></textarea>
+          </div>
+          <div class="form-group">
+            <label>Last Updated</label>
+            <input type="date" id="ren_lastUpdated">
+          </div>
+        </div>
+        <input type="hidden" id="ren_editId">
+        <div class="form-actions">
+          <button type="button" class="btn btn-secondary" onclick="closeModal('renewalFormModal')">Cancel</button>
+          <button type="button" class="btn btn-danger btn-sm" id="deleteRenewalBtn" onclick="deleteCurrentRenewal()" style="display:none">Delete</button>
+          <button type="submit" class="btn btn-primary">Save</button>
         </div>
       </form>
     </div>
@@ -1275,6 +1383,7 @@ const SP_LIST_DOCUMENTS = 'Licensing_Documents';
 const SP_LIST_USERS = 'Licensing_UserRoles';
 const SP_LIST_AUDIT = 'Licensing_AuditLog';
 const SP_LIST_EMPLOYEES = 'Licensing_Employees';
+const SP_LIST_RENEWALS = 'Licensing_RenewalRequirements';
 const SP_DOC_LIBRARY = 'Licensing_Files';
 const SP_CFG_KEY = 'licensing_sp_config';
 const GRAPH_BASE = 'https://graph.microsoft.com/v1.0';
@@ -1303,6 +1412,7 @@ let inspections = [];
 let documents = [];
 let auditEntries = []; // loaded on demand when audit tab is opened
 let employees = []; // manually-added non-365 employees
+let renewalReqs = []; // state/type renewal requirements reference
 let currentLicenseId = null;
 let sortField = 'expirationDate';
 let sortDir = 1;
@@ -1766,7 +1876,7 @@ async function spConnect() {
     spSiteId = siteData.id;
 
     // Resolve list IDs
-    for (const listName of [SP_LIST_LICENSES, SP_LIST_INSPECTIONS, SP_LIST_DOCUMENTS, SP_LIST_USERS, SP_LIST_AUDIT, SP_LIST_EMPLOYEES]) {
+    for (const listName of [SP_LIST_LICENSES, SP_LIST_INSPECTIONS, SP_LIST_DOCUMENTS, SP_LIST_USERS, SP_LIST_AUDIT, SP_LIST_EMPLOYEES, SP_LIST_RENEWALS]) {
       try {
         const listResp = await fetch(`${GRAPH_BASE}/sites/${spSiteId}/lists/${encodeURIComponent(listName)}`, { headers: { Authorization: `Bearer ${token}` } });
         if (listResp.ok) {
@@ -1873,6 +1983,18 @@ async function spCreateLists() {
       { name: 'OfficeLocation', text: {} },
       { name: 'JobTitle', text: {} },
       { name: 'Notes', text: { allowMultipleLines: true } }
+    ]},
+    { displayName: SP_LIST_RENEWALS, columns: [
+      { name: 'StateName', text: {} },
+      { name: 'LicenseType', text: {} },
+      { name: 'RenewalFrequency', text: {} },
+      { name: 'RenewalWindow', text: {} },
+      { name: 'CERequirement', text: { allowMultipleLines: true } },
+      { name: 'Fee', text: {} },
+      { name: 'BoardWebsite', text: {} },
+      { name: 'BoardPhone', text: {} },
+      { name: 'Instructions', text: { allowMultipleLines: true } },
+      { name: 'LastUpdated', text: {} }
     ]}
   ];
 
@@ -2540,6 +2662,7 @@ async function onSignedIn(account) {
     await loadUserRoles();
     await resolveUserRole();
     await loadEmployees();
+    await loadRenewalReqs();
 
     const loaded = await loadFromSharePoint();
     if (!loaded && licenses.length > 0 && isAdmin) {
@@ -2570,6 +2693,12 @@ function setupNavigation() {
       document.getElementById('page-' + tab.dataset.page).classList.add('active');
       if (tab.dataset.page === 'audit') loadAuditLog();
       if (tab.dataset.page === 'employees') { loadEmployees().then(renderEmployeeTable); }
+      if (tab.dataset.page === 'renewals') {
+        loadRenewalReqs().then(async () => {
+          if (canEdit() && renewalReqs.length === 0) { await seedRenewalReqsIfEmpty(); }
+          renderRenewalList();
+        });
+      }
     });
   });
 }
@@ -3841,6 +3970,29 @@ async function loadUserRoles() {
   backfillOfficeLocations();
 }
 
+async function loadRenewalReqs() {
+  if (!spConnected || !spListIds[SP_LIST_RENEWALS]) { renewalReqs = []; return; }
+  try {
+    const items = await spFetchAll(SP_LIST_RENEWALS);
+    renewalReqs = items.map(item => {
+      const f = item.fields || {};
+      return {
+        spItemId: item.id,
+        state: f.StateName || f.Title || '',
+        licenseType: f.LicenseType || '',
+        renewalFrequency: f.RenewalFrequency || '',
+        renewalWindow: f.RenewalWindow || '',
+        ceRequirement: f.CERequirement || '',
+        fee: f.Fee || '',
+        boardWebsite: f.BoardWebsite || '',
+        boardPhone: f.BoardPhone || '',
+        instructions: f.Instructions || '',
+        lastUpdated: f.LastUpdated || ''
+      };
+    });
+  } catch(e) { console.warn('loadRenewalReqs failed:', e); renewalReqs = []; }
+}
+
 async function loadEmployees() {
   if (!spConnected || !spListIds[SP_LIST_EMPLOYEES]) { employees = []; return; }
   try {
@@ -4200,6 +4352,271 @@ function renderAuditLog() {
   document.getElementById('auditTableBody').innerHTML = html;
   document.getElementById('auditEmpty').style.display = filtered.length ? 'none' : 'block';
 }
+
+// ===== RENEWAL REQUIREMENTS =====
+const US_STATES = ['Alabama','Alaska','Arizona','Arkansas','California','Colorado','Connecticut','Delaware','District of Columbia','Florida','Georgia','Hawaii','Idaho','Illinois','Indiana','Iowa','Kansas','Kentucky','Louisiana','Maine','Maryland','Massachusetts','Michigan','Minnesota','Mississippi','Missouri','Montana','Nebraska','Nevada','New Hampshire','New Jersey','New Mexico','New York','North Carolina','North Dakota','Ohio','Oklahoma','Oregon','Pennsylvania','Puerto Rico','Rhode Island','South Carolina','South Dakota','Tennessee','Texas','Utah','Vermont','Virginia','Washington','West Virginia','Wisconsin','Wyoming','Federal (DEA)'];
+
+function populateRenewalStateSelects() {
+  const main = document.getElementById('renewalStateFilter');
+  if (main) {
+    const current = main.value;
+    const known = new Set(renewalReqs.map(r => r.state).filter(Boolean));
+    const opts = ['<option value="">All states</option>']
+      .concat([...known].sort().map(s => `<option value="${escHtml(s)}">${escHtml(s)}</option>`));
+    main.innerHTML = opts.join('');
+    main.value = current;
+  }
+  const form = document.getElementById('ren_state');
+  if (form) {
+    form.innerHTML = '<option value="">— Select state —</option>'
+      + US_STATES.map(s => `<option value="${escHtml(s)}">${escHtml(s)}</option>`).join('');
+  }
+}
+
+function clearRenewalFilters() {
+  const s = document.getElementById('renewalSearch'); if (s) s.value = '';
+  const t = document.getElementById('renewalTypeFilter'); if (t) t.value = '';
+  const st = document.getElementById('renewalStateFilter'); if (st) st.value = '';
+  renderRenewalList();
+}
+
+function renewalTypeClass(t) {
+  if (t === 'Pharmacist') return 'badge-pharmacist';
+  if (t === 'Pharmacy Technician') return 'badge-technician';
+  if (t === 'Pharmacy / Business') return 'badge-pharmacy';
+  if (t === 'Controlled Substance' || t === 'DEA') return 'badge-urgent';
+  return 'badge-ok';
+}
+
+function renderRenewalList() {
+  populateRenewalStateSelects();
+  const container = document.getElementById('renewalList');
+  const empty = document.getElementById('renewalEmpty');
+  if (!container) return;
+  const q = (document.getElementById('renewalSearch')?.value || '').toLowerCase().trim();
+  const typeFilter = document.getElementById('renewalTypeFilter')?.value || '';
+  const stateFilter = document.getElementById('renewalStateFilter')?.value || '';
+
+  let rows = renewalReqs.slice();
+  if (typeFilter) rows = rows.filter(r => r.licenseType === typeFilter);
+  if (stateFilter) rows = rows.filter(r => r.state === stateFilter);
+  if (q) rows = rows.filter(r =>
+    (r.state + ' ' + r.licenseType + ' ' + r.ceRequirement + ' ' + r.instructions + ' ' + r.renewalFrequency + ' ' + r.boardWebsite).toLowerCase().includes(q)
+  );
+  rows.sort((a,b) => (a.state||'').localeCompare(b.state||'') || (a.licenseType||'').localeCompare(b.licenseType||''));
+
+  if (!rows.length) {
+    container.innerHTML = '';
+    empty.style.display = 'block';
+    return;
+  }
+  empty.style.display = 'none';
+
+  // Group by state
+  const byState = {};
+  rows.forEach(r => { (byState[r.state] = byState[r.state] || []).push(r); });
+
+  const canEditRenewal = canEdit();
+  let html = '';
+  for (const state of Object.keys(byState).sort()) {
+    html += `<div style="margin-bottom:18px"><h3 style="font-size:15px;margin:0 0 8px;color:var(--gray-700);border-bottom:1px solid var(--gray-200);padding-bottom:4px">${escHtml(state)}</h3>`;
+    html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:10px">';
+    byState[state].forEach(r => {
+      const website = r.boardWebsite ? `<a href="${escHtml(r.boardWebsite.startsWith('http') ? r.boardWebsite : 'https://' + r.boardWebsite)}" target="_blank" rel="noopener" style="font-size:12px;color:var(--primary);word-break:break-all">${escHtml(r.boardWebsite)}</a>` : '';
+      html += `<div style="border:1px solid var(--gray-200);border-radius:var(--radius);padding:12px;background:white">
+        <div style="display:flex;justify-content:space-between;align-items:start;gap:8px;margin-bottom:8px">
+          <span class="badge ${renewalTypeClass(r.licenseType)}">${escHtml(r.licenseType)}</span>
+          ${canEditRenewal ? `<button class="btn btn-sm btn-secondary" style="font-size:11px;padding:3px 8px" onclick="openEditRenewal('${r.spItemId}')">Edit</button>` : ''}
+        </div>
+        ${r.renewalFrequency ? `<div style="font-size:13px"><strong>Frequency:</strong> ${escHtml(r.renewalFrequency)}</div>` : ''}
+        ${r.renewalWindow ? `<div style="font-size:13px"><strong>Window:</strong> ${escHtml(r.renewalWindow)}</div>` : ''}
+        ${r.ceRequirement ? `<div style="font-size:13px;margin-top:4px"><strong>CE:</strong> ${escHtml(r.ceRequirement)}</div>` : ''}
+        ${r.fee ? `<div style="font-size:13px"><strong>Fee:</strong> ${escHtml(r.fee)}</div>` : ''}
+        ${r.boardPhone ? `<div style="font-size:13px"><strong>Phone:</strong> ${escHtml(r.boardPhone)}</div>` : ''}
+        ${website ? `<div style="font-size:13px;margin-top:4px"><strong>Board:</strong> ${website}</div>` : ''}
+        ${r.instructions ? `<div style="font-size:12px;color:var(--gray-600);margin-top:8px;white-space:pre-wrap">${escHtml(r.instructions)}</div>` : ''}
+        ${r.lastUpdated ? `<div style="font-size:11px;color:var(--gray-400);margin-top:8px">Updated ${formatDate(r.lastUpdated)}</div>` : ''}
+      </div>`;
+    });
+    html += '</div></div>';
+  }
+  container.innerHTML = html;
+}
+
+function openAddRenewal() {
+  if (!canEdit()) { showToast('Admins only', 'error'); return; }
+  document.getElementById('renewalFormTitle').textContent = 'Add Renewal Requirement';
+  document.getElementById('renewalForm').reset();
+  document.getElementById('ren_editId').value = '';
+  document.getElementById('deleteRenewalBtn').style.display = 'none';
+  populateRenewalStateSelects();
+  document.getElementById('ren_lastUpdated').value = new Date().toISOString().slice(0, 10);
+  openModal('renewalFormModal');
+}
+
+function openEditRenewal(spId) {
+  if (!canEdit()) { showToast('Admins only', 'error'); return; }
+  const r = renewalReqs.find(x => String(x.spItemId) === String(spId));
+  if (!r) return;
+  populateRenewalStateSelects();
+  document.getElementById('renewalFormTitle').textContent = 'Edit — ' + r.state + ' ' + r.licenseType;
+  document.getElementById('ren_editId').value = r.spItemId;
+  document.getElementById('ren_state').value = r.state;
+  document.getElementById('ren_type').value = r.licenseType;
+  document.getElementById('ren_frequency').value = r.renewalFrequency || '';
+  document.getElementById('ren_window').value = r.renewalWindow || '';
+  document.getElementById('ren_fee').value = r.fee || '';
+  document.getElementById('ren_phone').value = r.boardPhone || '';
+  document.getElementById('ren_website').value = r.boardWebsite || '';
+  document.getElementById('ren_ce').value = r.ceRequirement || '';
+  document.getElementById('ren_instructions').value = r.instructions || '';
+  document.getElementById('ren_lastUpdated').value = r.lastUpdated || '';
+  document.getElementById('deleteRenewalBtn').style.display = 'inline-flex';
+  openModal('renewalFormModal');
+}
+
+async function saveRenewal(ev) {
+  ev.preventDefault();
+  if (!canEdit()) { showToast('Admins only', 'error'); return; }
+  if (!spConnected || !spListIds[SP_LIST_RENEWALS]) { showToast('SharePoint not connected', 'error'); return; }
+
+  const editId = document.getElementById('ren_editId').value;
+  const state = document.getElementById('ren_state').value;
+  const licenseType = document.getElementById('ren_type').value;
+  if (!state || !licenseType) { showToast('State and type are required', 'error'); return; }
+
+  const fields = {
+    Title: state + ' — ' + licenseType,
+    StateName: state,
+    LicenseType: licenseType,
+    RenewalFrequency: document.getElementById('ren_frequency').value.trim(),
+    RenewalWindow: document.getElementById('ren_window').value.trim(),
+    CERequirement: document.getElementById('ren_ce').value.trim(),
+    Fee: document.getElementById('ren_fee').value.trim(),
+    BoardWebsite: document.getElementById('ren_website').value.trim(),
+    BoardPhone: document.getElementById('ren_phone').value.trim(),
+    Instructions: document.getElementById('ren_instructions').value.trim(),
+    LastUpdated: document.getElementById('ren_lastUpdated').value || ''
+  };
+
+  let ok = false;
+  let auditSummary = '';
+  if (editId) {
+    const before = renewalReqs.find(x => String(x.spItemId) === String(editId));
+    ok = await spUpdateItem(SP_LIST_RENEWALS, editId, fields);
+    if (before && ok) {
+      auditSummary = diffRecord(
+        { frequency: before.renewalFrequency, window: before.renewalWindow, ce: before.ceRequirement, fee: before.fee, website: before.boardWebsite, phone: before.boardPhone, instructions: before.instructions, lastUpdated: before.lastUpdated },
+        { frequency: fields.RenewalFrequency, window: fields.RenewalWindow, ce: fields.CERequirement, fee: fields.Fee, website: fields.BoardWebsite, phone: fields.BoardPhone, instructions: fields.Instructions, lastUpdated: fields.LastUpdated }
+      );
+    }
+  } else {
+    const result = await spCreateItem(SP_LIST_RENEWALS, fields);
+    ok = !!result;
+    auditSummary = 'Added renewal info';
+  }
+  if (!ok) return;
+  logAudit(editId ? 'update' : 'create', 'renewal-req', state + ' — ' + licenseType, auditSummary, editId);
+  await loadRenewalReqs();
+  renderRenewalList();
+  closeModal('renewalFormModal');
+  showToast(editId ? 'Entry updated' : 'Entry added', 'success');
+}
+
+async function deleteCurrentRenewal() {
+  if (!canEdit()) return;
+  const editId = document.getElementById('ren_editId').value;
+  if (!editId) return;
+  const r = renewalReqs.find(x => String(x.spItemId) === String(editId));
+  if (!r) return;
+  if (!confirm('Delete the renewal entry for "' + r.state + ' — ' + r.licenseType + '"?')) return;
+  if (spConnected && spListIds[SP_LIST_RENEWALS]) {
+    await spDeleteItem(SP_LIST_RENEWALS, editId);
+  }
+  logAudit('delete', 'renewal-req', r.state + ' — ' + r.licenseType, 'Removed', editId);
+  await loadRenewalReqs();
+  renderRenewalList();
+  closeModal('renewalFormModal');
+  showToast('Entry deleted', 'success');
+}
+
+async function seedRenewalReqsIfEmpty() {
+  if (!canEdit()) return;
+  if (!spConnected || !spListIds[SP_LIST_RENEWALS]) return;
+  if (renewalReqs.length > 0) return;
+
+  const today = new Date().toISOString().slice(0, 10);
+  const seeds = RENEWAL_SEED_DATA;
+  let added = 0;
+  for (const s of seeds) {
+    const fields = {
+      Title: s.state + ' — ' + s.licenseType,
+      StateName: s.state,
+      LicenseType: s.licenseType,
+      RenewalFrequency: s.renewalFrequency || '',
+      RenewalWindow: s.renewalWindow || '',
+      CERequirement: s.ceRequirement || '',
+      Fee: s.fee || '',
+      BoardWebsite: s.boardWebsite || '',
+      BoardPhone: s.boardPhone || '',
+      Instructions: s.instructions || '',
+      LastUpdated: today
+    };
+    const result = await spCreateItem(SP_LIST_RENEWALS, fields);
+    if (result) added++;
+  }
+  if (added > 0) {
+    showToast('Seeded ' + added + ' renewal requirement entries', 'success');
+    await loadRenewalReqs();
+    renderRenewalList();
+  }
+}
+
+const RENEWAL_SEED_DATA = [
+  // ARIZONA
+  { state:'Arizona', licenseType:'Pharmacist', renewalFrequency:'Biennial (odd years)', renewalWindow:'Renewal opens ~60 days before 10/31 expiration', ceRequirement:'30 hours CE per renewal, incl. 3 hrs law & 1 hr opioid/substance abuse', fee:'$250', boardWebsite:'https://pharmacy.az.gov', boardPhone:'(602) 771-2727', instructions:'Renew online via AZBOP portal. CE must be completed before submitting.' },
+  { state:'Arizona', licenseType:'Pharmacy Technician', renewalFrequency:'Biennial', renewalWindow:'~60 days before expiration', ceRequirement:'20 hours CE per renewal, incl. 1 hr law', fee:'$100', boardWebsite:'https://pharmacy.az.gov', boardPhone:'(602) 771-2727', instructions:'Renew online via AZBOP portal.' },
+  { state:'Arizona', licenseType:'Pharmacy / Business', renewalFrequency:'Annual', renewalWindow:'Renewal by 10/31 each year', ceRequirement:'N/A', fee:'$420', boardWebsite:'https://pharmacy.az.gov', boardPhone:'(602) 771-2727', instructions:'Submit via AZBOP online portal; inspection required every 2 years.' },
+
+  // KENTUCKY
+  { state:'Kentucky', licenseType:'Pharmacist', renewalFrequency:'Annual (by 2/28)', renewalWindow:'Renewal opens early January', ceRequirement:'15 hours CE annually (1.5 CEU), incl. 1 hr KY law every 2 yrs', fee:'$125', boardWebsite:'https://pharmacy.ky.gov', boardPhone:'(502) 573-1580', instructions:'Renew via Licensure Gateway. Upload CE if audited.' },
+  { state:'Kentucky', licenseType:'Pharmacy Technician', renewalFrequency:'Annual', renewalWindow:'By 2/28', ceRequirement:'None required for technician renewal (PTCB/NHA for national cert only)', fee:'$50', boardWebsite:'https://pharmacy.ky.gov', boardPhone:'(502) 573-1580', instructions:'Renew via Licensure Gateway.' },
+  { state:'Kentucky', licenseType:'Pharmacy / Business', renewalFrequency:'Annual', renewalWindow:'By 6/30', ceRequirement:'N/A', fee:'$275', boardWebsite:'https://pharmacy.ky.gov', boardPhone:'(502) 573-1580', instructions:'Non-resident permit renewal also available through Gateway.' },
+
+  // MISSISSIPPI
+  { state:'Mississippi', licenseType:'Pharmacist', renewalFrequency:'Annual (by 12/31)', renewalWindow:'Renewal opens 10/1', ceRequirement:'15 hours CE annually, incl. 1 hr live or law; 2-yr audit cycle', fee:'$150', boardWebsite:'https://www.mbp.ms.gov', boardPhone:'(601) 899-8880', instructions:'Renew online via MBP portal.' },
+  { state:'Mississippi', licenseType:'Pharmacy Technician', renewalFrequency:'Biennial', renewalWindow:'By 12/31 in renewal year', ceRequirement:'20 hours per 2-yr cycle, incl. 1 hr law', fee:'$50', boardWebsite:'https://www.mbp.ms.gov', boardPhone:'(601) 899-8880', instructions:'Renew online via MBP portal.' },
+  { state:'Mississippi', licenseType:'Pharmacy / Business', renewalFrequency:'Biennial', renewalWindow:'By 12/31', ceRequirement:'N/A', fee:'$400', boardWebsite:'https://www.mbp.ms.gov', boardPhone:'(601) 899-8880', instructions:'Resident and non-resident permits renewed online.' },
+
+  // PENNSYLVANIA
+  { state:'Pennsylvania', licenseType:'Pharmacist', renewalFrequency:'Biennial (ends 9/30, even years)', renewalWindow:'Renewal opens 60+ days prior', ceRequirement:'30 hours per 2-yr cycle, incl. 2 hrs patient safety, 2 hrs pain/opioid', fee:'$210', boardWebsite:'https://www.pals.pa.gov', boardPhone:'(717) 783-7156', instructions:'Renew through PALS. Act 31 child abuse recognition required.' },
+  { state:'Pennsylvania', licenseType:'Pharmacy Technician', renewalFrequency:'Biennial', renewalWindow:'Ends 9/30 even years', ceRequirement:'None required; PA has no formal pharmacy tech CE requirement', fee:'$80', boardWebsite:'https://www.pals.pa.gov', boardPhone:'(717) 783-7156', instructions:'Registered pharmacy technicians renew via PALS.' },
+  { state:'Pennsylvania', licenseType:'Pharmacy / Business', renewalFrequency:'Biennial', renewalWindow:'Ends 2/28 odd years', ceRequirement:'N/A', fee:'$400', boardWebsite:'https://www.pals.pa.gov', boardPhone:'(717) 783-7156', instructions:'Renew pharmacy permit through PALS.' },
+
+  // FLORIDA
+  { state:'Florida', licenseType:'Pharmacist', renewalFrequency:'Biennial (ends 9/30)', renewalWindow:'Opens ~90 days prior', ceRequirement:'30 hours CE per cycle, incl. 2 hrs law, 2 hrs medication errors, 2 hrs HIV/AIDS (first renewal only)', fee:'$255', boardWebsite:'https://floridaspharmacy.gov', boardPhone:'(850) 245-4292', instructions:'Renew through MQA Online Services Portal.' },
+  { state:'Florida', licenseType:'Pharmacy Technician', renewalFrequency:'Biennial', renewalWindow:'Ends 12/31', ceRequirement:'20 hours CE per cycle, incl. 2 hrs law', fee:'$105', boardWebsite:'https://floridaspharmacy.gov', boardPhone:'(850) 245-4292', instructions:'Renew through MQA portal.' },
+  { state:'Florida', licenseType:'Pharmacy / Business', renewalFrequency:'Biennial', renewalWindow:'Ends 2/28', ceRequirement:'N/A', fee:'$250', boardWebsite:'https://floridaspharmacy.gov', boardPhone:'(850) 245-4292', instructions:'Community & non-resident permits renewed through MQA.' },
+
+  // TEXAS
+  { state:'Texas', licenseType:'Pharmacist', renewalFrequency:'Biennial', renewalWindow:'By last day of birth month in renewal year', ceRequirement:'30 hours CE per cycle, incl. 1 hr TX law, 1 hr immunization (if admin), 2 hrs opioid (once)', fee:'$281', boardWebsite:'https://www.pharmacy.texas.gov', boardPhone:'(512) 305-8000', instructions:'Renew via TSBP Online Licensing.' },
+  { state:'Texas', licenseType:'Pharmacy Technician', renewalFrequency:'Biennial', renewalWindow:'Birth month', ceRequirement:'20 hours per cycle, incl. 1 hr TX law', fee:'$81', boardWebsite:'https://www.pharmacy.texas.gov', boardPhone:'(512) 305-8000', instructions:'Renew via TSBP Online Licensing; national cert required.' },
+  { state:'Texas', licenseType:'Pharmacy / Business', renewalFrequency:'Biennial', renewalWindow:'Per license issue date', ceRequirement:'N/A', fee:'$526', boardWebsite:'https://www.pharmacy.texas.gov', boardPhone:'(512) 305-8000', instructions:'Class A/B/C/D/E renewals via TSBP.' },
+
+  // OHIO
+  { state:'Ohio', licenseType:'Pharmacist', renewalFrequency:'Annual (by 9/15)', renewalWindow:'Opens 6/1', ceRequirement:'30 hours per 2-yr cycle (biennial cycle), incl. 3 hrs law, 0.5 hr OARRS', fee:'$140', boardWebsite:'https://www.pharmacy.ohio.gov', boardPhone:'(614) 466-4143', instructions:'Renew via eLicense Ohio portal.' },
+  { state:'Ohio', licenseType:'Pharmacy Technician', renewalFrequency:'Biennial', renewalWindow:'By 9/15', ceRequirement:'20 hours per 2-yr cycle, incl. 1 hr law', fee:'$50', boardWebsite:'https://www.pharmacy.ohio.gov', boardPhone:'(614) 466-4143', instructions:'Registered CPhT renew via eLicense Ohio.' },
+  { state:'Ohio', licenseType:'Pharmacy / Business', renewalFrequency:'Annual', renewalWindow:'By 4/1', ceRequirement:'N/A', fee:'$250', boardWebsite:'https://www.pharmacy.ohio.gov', boardPhone:'(614) 466-4143', instructions:'TDDD / TCD renewals via eLicense Ohio.' },
+
+  // CALIFORNIA
+  { state:'California', licenseType:'Pharmacist', renewalFrequency:'Biennial', renewalWindow:'Last day of birth month', ceRequirement:'30 hours CE per cycle, incl. 2 hrs law/ethics', fee:'$360', boardWebsite:'https://www.pharmacy.ca.gov', boardPhone:'(916) 518-3100', instructions:'Renew via BreEZe online portal. First-time renewals have specific requirements.' },
+  { state:'California', licenseType:'Pharmacy Technician', renewalFrequency:'Biennial', renewalWindow:'Birth month', ceRequirement:'None — but PTCB/ExCPT required to obtain/renew license', fee:'$145', boardWebsite:'https://www.pharmacy.ca.gov', boardPhone:'(916) 518-3100', instructions:'Renew via BreEZe.' },
+  { state:'California', licenseType:'Pharmacy / Business', renewalFrequency:'Annual', renewalWindow:'Per issue anniversary', ceRequirement:'N/A', fee:'$570', boardWebsite:'https://www.pharmacy.ca.gov', boardPhone:'(916) 518-3100', instructions:'Community & non-resident permits renewed via BreEZe.' },
+
+  // DEA (FEDERAL)
+  { state:'Federal (DEA)', licenseType:'DEA', renewalFrequency:'Every 3 years', renewalWindow:'~60 days before expiration', ceRequirement:'MATE Act training: 8 hours on substance use disorder treatment (one-time attestation at renewal)', fee:'$888 (practitioner)', boardWebsite:'https://www.deadiversion.usdoj.gov', boardPhone:'(800) 882-9539', instructions:'Renew online at DEA Diversion Control Division site. MATE attestation required.' },
+  { state:'Federal (DEA)', licenseType:'Controlled Substance', renewalFrequency:'Every 3 years', renewalWindow:'~60 days before expiration', ceRequirement:'MATE Act training (see DEA)', fee:'$888', boardWebsite:'https://www.deadiversion.usdoj.gov', boardPhone:'(800) 882-9539', instructions:'Pharmacy DEA registrations — renew online.' }
+];
 
 // ===== EMPLOYEES (non-365) =====
 function employeesVisibleToUser() {
