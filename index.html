@@ -408,6 +408,7 @@
             <option value="DEA" style="background:#fef3c7;color:#92400e">DEA</option>
             <option value="Controlled Substance" style="background:#fce7f3;color:#be185d">Controlled Substance</option>
             <option value="Sterile Compounding" style="background:#ccfbf1;color:#0f766e">Sterile Compounding</option>
+            <option value="Non-Sterile Compounding" style="background:#d1fae5;color:#065f46">Non-Sterile Compounding</option>
             <option value="Hemp" style="background:#ecfccb;color:#3f6212">Hemp</option>
             <option value="Pseudoephedrine" style="background:#fef9c3;color:#854d0e">Pseudoephedrine (PSE)</option>
             <option value="Technician" style="background:#fdf2f8;color:#9d174d">Technician</option>
@@ -503,6 +504,7 @@
             <option value="DEA">DEA</option>
             <option value="Controlled Substance">Controlled Substance</option>
             <option value="Sterile Compounding">Sterile Compounding</option>
+            <option value="Non-Sterile Compounding">Non-Sterile Compounding</option>
             <option value="Hemp">Hemp</option>
             <option value="Pseudoephedrine">Pseudoephedrine</option>
             <option value="Medicaid">Medicaid</option>
@@ -1190,6 +1192,7 @@
               <option value="DEA" style="background:#fef3c7;color:#92400e">DEA</option>
               <option value="Controlled Substance" style="background:#fce7f3;color:#be185d">Controlled Substance</option>
               <option value="Sterile Compounding" style="background:#ccfbf1;color:#0f766e">Sterile Compounding</option>
+              <option value="Non-Sterile Compounding" style="background:#d1fae5;color:#065f46">Non-Sterile Compounding</option>
               <option value="Hemp" style="background:#ecfccb;color:#3f6212">Hemp</option>
               <option value="Pseudoephedrine" style="background:#fef9c3;color:#854d0e">Pseudoephedrine (PSE)</option>
               <option value="Technician" style="background:#fdf2f8;color:#9d174d">Technician</option>
@@ -3761,7 +3764,7 @@ function renderPersonnelTable() {
   // Build personnel from license holders
   const personnelMap = {};
   // Facility license types are held by the pharmacy/entity, not a person
-  const FACILITY_TYPES = new Set(['Pharmacy', 'Business', 'DEA', 'Controlled Substance', 'Medicaid', 'Hemp', 'Pseudoephedrine', 'Sterile Compounding']);
+  const FACILITY_TYPES = new Set(['Pharmacy', 'Business', 'DEA', 'Controlled Substance', 'Medicaid', 'Hemp', 'Pseudoephedrine', 'Sterile Compounding', 'Non-Sterile Compounding']);
   licenses.forEach(l => {
     if (!l.licenseHolder) return;
     if (FACILITY_TYPES.has(l.type)) return; // facility/entity license, not a person
