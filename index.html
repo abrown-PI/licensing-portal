@@ -303,7 +303,7 @@
     <button class="nav-tab" data-page="locations">Locations</button>
     <button class="nav-tab" data-page="licenses">All Licenses</button>
     <button class="nav-tab" data-page="personnel">Personnel</button>
-    <button class="nav-tab" data-page="inspections">Inspections</button>
+    <button class="nav-tab" data-page="inspections">Inspections/Audits</button>
     <button class="nav-tab" data-page="documents">Documents</button>
     <button class="nav-tab" data-page="renewals">Renewal Requirements</button>
     <button class="nav-tab manager-tab" data-page="employees" style="display:none">Employees</button>
@@ -1270,10 +1270,10 @@
             <label>Inspector Name / Board</label>
             <input type="text" id="insp_inspector" placeholder="e.g. J. Smith — TX Board of Pharmacy">
           </div>
-          <div class="form-group">
+          <div class="form-group" style="position:relative">
             <label>Employee On Site</label>
-            <input type="text" id="insp_employee" placeholder="Who from our team was present" autocomplete="off">
-            <div id="insp_employeeResults" style="display:none;position:absolute;background:white;border:1px solid var(--gray-300);border-radius:var(--radius);max-height:180px;overflow-y:auto;z-index:10;box-shadow:var(--shadow-md);min-width:260px"></div>
+            <input type="text" id="insp_employee" placeholder="Search 365 users or employees..." autocomplete="off" oninput="searchInspEmployee()" onfocus="searchInspEmployee()">
+            <div id="insp_employeeResults" style="display:none;position:absolute;top:100%;left:0;right:0;background:white;border:1px solid var(--gray-300);border-radius:var(--radius);max-height:220px;overflow-y:auto;z-index:10;box-shadow:var(--shadow-md)"></div>
           </div>
           <div class="form-group full-width" style="position:relative">
             <label>Related License</label>
@@ -1310,7 +1310,7 @@
         <input type="hidden" id="insp_editId">
         <div class="form-actions">
           <button type="button" class="btn btn-secondary" onclick="closeModal('inspectionFormModal')">Cancel</button>
-          <button type="submit" class="btn btn-primary">Save Inspection</button>
+          <button type="submit" class="btn btn-primary">Save Inspection/Audit</button>
         </div>
       </form>
     </div>
@@ -5284,6 +5284,97 @@ function removeRequirement(idx) {
 
 // ===== LICENSE HOLDER LOOKUP =====
 let holderSearchTimeout;
+// ===== EMPLOYEE ON SITE PICKER (for inspection form) =====
+let inspEmployeeSearchTimeout = null;
+
+function searchInspEmployee() {
+  const q = (document.getElementById('insp_employee').value || '').trim();
+  const container = document.getElementById('insp_employeeResults');
+  if (!container) return;
+  if (q.length < 1) { container.style.display = 'none'; return; }
+  const ql = q.toLowerCase();
+
+  let results = [];
+
+  // 1. Local non-365 employees
+  employees.forEach(emp => {
+    const search = (emp.displayName + ' ' + (emp.email || '') + ' ' + (emp.officeLocation || '') + ' ' + (emp.jobTitle || '')).toLowerCase();
+    if (search.includes(ql)) {
+      const sub = [emp.jobTitle, emp.officeLocation].filter(Boolean).join(' — ');
+      results.push({ name: emp.displayName, sub: sub || 'Employee', type: 'employee' });
+    }
+  });
+
+  // 2. Already seen on other inspections (quick reuse)
+  const seen = new Set();
+  inspections.forEach(i => {
+    if (i.employeeOnSite && !seen.has(i.employeeOnSite.toLowerCase())) {
+      seen.add(i.employeeOnSite.toLowerCase());
+      if (i.employeeOnSite.toLowerCase().includes(ql) && !results.find(r => r.name.toLowerCase() === i.employeeOnSite.toLowerCase())) {
+        results.push({ name: i.employeeOnSite, sub: 'Previously recorded', type: 'prior' });
+      }
+    }
+  });
+
+  renderInspEmployeeResults(results, container);
+
+  // 3. Live Azure AD search (debounced)
+  clearTimeout(inspEmployeeSearchTimeout);
+  inspEmployeeSearchTimeout = setTimeout(async () => {
+    const token = await getToken();
+    if (!token) return;
+    try {
+      const eq = encodeURIComponent(q);
+      const resp = await fetch(
+        `${GRAPH_BASE}/users?$filter=startswith(displayName,'${eq}') or startswith(givenName,'${eq}') or startswith(surname,'${eq}')&$top=10&$select=displayName,mail,jobTitle,officeLocation`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      if (!resp.ok) return;
+      const data = await resp.json();
+      (data.value || []).forEach(u => {
+        if (!results.find(r => r.name.toLowerCase() === (u.displayName || '').toLowerCase())) {
+          const sub = [u.jobTitle, u.officeLocation].filter(Boolean).join(' — ');
+          results.push({ name: u.displayName, sub: sub || 'Office 365', type: '365' });
+        }
+      });
+      renderInspEmployeeResults(results, container);
+    } catch(e) { /* silent */ }
+  }, 300);
+}
+
+function renderInspEmployeeResults(results, container) {
+  if (!results.length) {
+    container.innerHTML = '<div style="padding:10px;font-size:13px;color:var(--gray-400)">No matches — keep typing, or enter a name free-text</div>';
+    container.style.display = 'block';
+    return;
+  }
+  container.innerHTML = results.slice(0, 15).map(r => {
+    const icon = r.type === '365' ? '👤' : r.type === 'employee' ? '🧑' : '📋';
+    const label = r.type === '365' ? 'Office 365' : r.type === 'employee' ? 'Employee' : 'Prior';
+    return `<div style="padding:8px 12px;cursor:pointer;border-bottom:1px solid var(--gray-100);font-size:13px;display:flex;align-items:center;gap:8px"
+      onmouseover="this.style.background='var(--gray-50)'" onmouseout="this.style.background=''"
+      onclick="selectInspEmployee('${escHtml(r.name)}')">
+      <span>${icon}</span>
+      <div style="flex:1;min-width:0">
+        <strong>${escHtml(r.name)}</strong>
+        ${r.sub ? '<div style="font-size:11px;color:var(--gray-500)">'+escHtml(r.sub)+'</div>' : ''}
+      </div>
+      <span style="font-size:10px;color:var(--gray-400);background:var(--gray-100);padding:2px 6px;border-radius:4px">${label}</span>
+    </div>`;
+  }).join('');
+  container.style.display = 'block';
+}
+
+function selectInspEmployee(name) {
+  document.getElementById('insp_employee').value = name;
+  document.getElementById('insp_employeeResults').style.display = 'none';
+}
+
+document.addEventListener('click', e => {
+  const er = document.getElementById('insp_employeeResults');
+  if (er && !e.target.closest('#insp_employee') && !e.target.closest('#insp_employeeResults')) er.style.display = 'none';
+});
+
 // ===== RELATED LICENSE PICKER (for inspection form) =====
 function searchRelatedLicense() {
   const raw = (document.getElementById('insp_license').value || '').trim();
