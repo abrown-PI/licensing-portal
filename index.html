@@ -3595,17 +3595,29 @@ function renderPersonnelTable() {
 
   // Build personnel from license holders
   const personnelMap = {};
+  // Facility license types are held by the pharmacy/entity, not a person
+  const FACILITY_TYPES = new Set(['Pharmacy', 'Business', 'DEA', 'Controlled Substance', 'Medicaid', 'Hemp', 'Pseudoephedrine', 'Sterile Compounding']);
   licenses.forEach(l => {
     if (!l.licenseHolder) return;
+    if (FACILITY_TYPES.has(l.type)) return; // facility/entity license, not a person
+    if (l.archived) return;
     const holder = l.licenseHolder.trim();
-    // Skip location/pharmacy names as holders (they're not personnel)
+    // Skip holder names that match a location, DBA, or business name
     const holderLower = holder.toLowerCase();
-    if (LOCATIONS.some(loc => {
+    const matchesLocation = LOCATIONS.some(loc => {
       const info = LOCATION_INFO[loc] || {};
-      const dba = info.dba || loc;
-      const fullName = dba + ' - ' + loc;
-      return holderLower === loc.toLowerCase() || holderLower === fullName.toLowerCase() || holderLower === loc.split(',')[0].trim().toLowerCase();
-    })) return;
+      const dba = (info.dba || '').toLowerCase();
+      const business = (info.businessName || '').toLowerCase();
+      const locLower = loc.toLowerCase();
+      const cityOnly = loc.split(',')[0].trim().toLowerCase();
+      const fullName = (dba ? dba + ' - ' + locLower : '');
+      return holderLower === locLower
+        || holderLower === cityOnly
+        || (dba && holderLower === dba)
+        || (business && holderLower === business)
+        || (fullName && holderLower === fullName);
+    });
+    if (matchesLocation) return;
     if (holder.length < 2) return;
 
     const key = holder.toLowerCase();
