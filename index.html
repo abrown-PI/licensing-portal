@@ -700,6 +700,7 @@
         <div style="display:flex;gap:8px">
           <button class="btn btn-sm btn-secondary" onclick="goToEmployeesPage()" title="Clean up non-365 Employees list">Manage Non-365 Employees</button>
           <button class="btn btn-sm btn-secondary" onclick="normalizeLocationHolders()" title="Rewrite location-as-holder values to the new 'DBA - City' format">Normalize Location Holders</button>
+          <button class="btn btn-sm btn-secondary" onclick="normalizePharmacyLicenseNames()" title="Pharmacy-type licenses whose name is a state -> rename to 'Pharmacy License' and move the state to Issuing State">Normalize Pharmacy Names</button>
           <button class="btn btn-sm btn-primary" onclick="openAddUser()">+ Add User</button>
         </div>
       </div>
@@ -5404,6 +5405,69 @@ async function normalizeLocationHolders() {
   saveLocalCache();
   renderAll();
   if (fail === 0) showToast('Updated ' + ok + ' license holder' + (ok === 1 ? '' : 's'), 'success');
+  else showToast('Updated ' + ok + ', failed ' + fail + ' — see console', 'error');
+}
+
+async function normalizePharmacyLicenseNames() {
+  if (!canEdit()) { showToast('Admins only', 'error'); return; }
+  if (!spConnected) { showToast('SharePoint not connected', 'error'); return; }
+
+  // Build reverse map: full state name (lowercase) -> abbrev
+  const NAME_TO_ABBR = {};
+  for (const [abbr, name] of Object.entries(STATE_ABBR_TO_NAME)) {
+    NAME_TO_ABBR[name.toLowerCase()] = abbr;
+  }
+
+  const changes = [];
+  licenses.forEach(l => {
+    if (l.type !== 'Pharmacy') return;
+    const current = (l.state || '').trim();
+    if (!current) return;
+    if (current === 'Pharmacy License') return; // already done
+    const lower = current.toLowerCase();
+    let abbr = null;
+    if (NAME_TO_ABBR[lower]) abbr = NAME_TO_ABBR[lower];
+    else if (STATE_ABBR_TO_NAME[current.toUpperCase()]) abbr = current.toUpperCase();
+    else return; // name isn't a state — leave it alone
+    // Only overwrite licenseState if it's empty or already matches
+    const existingLicState = (l.licenseState || '').toUpperCase();
+    if (existingLicState && existingLicState !== abbr) return; // conflicting data — skip to avoid clobbering
+    changes.push({ lic: l, fromState: current, toState: 'Pharmacy License', licStateBefore: l.licenseState || '', licStateAfter: abbr });
+  });
+
+  if (!changes.length) {
+    showToast('No Pharmacy licenses need renaming', 'info');
+    return;
+  }
+
+  const preview = changes.slice(0, 5).map(c =>
+    '  "' + c.fromState + '" -> "Pharmacy License" (Issuing State: ' + c.licStateAfter + ')'
+  ).join('\n');
+  const more = changes.length > 5 ? '\n  ...and ' + (changes.length - 5) + ' more' : '';
+  if (!confirm('Rename ' + changes.length + ' Pharmacy license' + (changes.length === 1 ? '' : 's') + '?\n\n' + preview + more)) return;
+
+  showToast('Normalizing ' + changes.length + ' Pharmacy licenses...', 'info');
+  let ok = 0, fail = 0;
+  for (const c of changes) {
+    const beforeName = c.lic.state;
+    const beforeLicState = c.lic.licenseState;
+    c.lic.state = 'Pharmacy License';
+    c.lic.licenseState = c.licStateAfter;
+    const success = await spSaveLicense(c.lic);
+    if (success) {
+      ok++;
+      logAudit('update', 'license', licDisplayName(c.lic) + ' (' + c.lic.location + ')',
+        'Normalized Pharmacy name "' + beforeName + '" -> "Pharmacy License"; Issuing State "' + beforeLicState + '" -> "' + c.licStateAfter + '"',
+        c.lic.spItemId || c.lic.id);
+    } else {
+      fail++;
+      c.lic.state = beforeName;
+      c.lic.licenseState = beforeLicState;
+    }
+  }
+  saveLocalCache();
+  renderAll();
+  if (fail === 0) showToast('Updated ' + ok + ' Pharmacy license' + (ok === 1 ? '' : 's'), 'success');
   else showToast('Updated ' + ok + ', failed ' + fail + ' — see console', 'error');
 }
 
