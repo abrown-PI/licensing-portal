@@ -1164,10 +1164,7 @@
             <input type="text" id="lic_password" placeholder="Login password">
           </div>
           <div class="form-group full-width">
-            <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:4px">
-              <label style="margin:0">Internal Notes for This License</label>
-              <button type="button" class="btn btn-sm btn-secondary" onclick="viewStateRenewalInstructions()" style="font-size:12px;white-space:nowrap">📖 View State Renewal Instructions</button>
-            </div>
+            <label>Internal Notes for This License</label>
             <div style="font-weight:400;color:var(--gray-400);font-size:12px;margin-bottom:6px">Pharmacy-specific quirks — login belongs to, which employee handles it, gotchas.</div>
             <textarea id="lic_renewalInstructions" placeholder="e.g. Katie uses her personal login for this board. Renewal emails go to Jenn. Must print and mail a copy after online submission." style="min-height:120px"></textarea>
           </div>
@@ -1178,7 +1175,10 @@
             <small style="color:var(--gray-400)">Upload a scan/copy of the current license (PDF, image, or document)</small>
           </div>
           <div class="form-group full-width">
-            <label>Renewal Documents <span style="font-weight:400;color:var(--gray-400)">(past applications, filled forms, supporting docs)</span></label>
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:4px">
+              <label style="margin:0">Renewal Documents <span style="font-weight:400;color:var(--gray-400)">(past applications, filled forms, supporting docs)</span></label>
+              <button type="button" class="btn btn-sm btn-secondary" onclick="viewStateRenewalInstructions()" style="font-size:12px;white-space:nowrap">📖 View State Renewal Instructions</button>
+            </div>
             <div id="lic_renewalDocsPreview" style="margin-bottom:8px"></div>
             <div style="display:flex;gap:8px;align-items:center;flex-wrap:nowrap">
               <input type="file" id="lic_renewalDocFile" accept=".pdf,.png,.jpg,.jpeg,.doc,.docx,.xlsx,.xls" multiple style="flex:0 0 auto">
