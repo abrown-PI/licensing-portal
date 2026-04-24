@@ -3724,16 +3724,18 @@ function renderPersonnelTable() {
     const holderLower = holder.toLowerCase();
     const matchesLocation = LOCATIONS.some(loc => {
       const info = LOCATION_INFO[loc] || {};
-      const dba = (info.dba || '').toLowerCase();
+      const dba = (info.dba || info.businessName || 'Pharmacy Innovations').toLowerCase();
       const business = (info.businessName || '').toLowerCase();
       const locLower = loc.toLowerCase();
       const cityOnly = loc.split(',')[0].trim().toLowerCase();
-      const fullName = (dba ? dba + ' - ' + locLower : '');
+      const dbaWithCity = dba + ' - ' + cityOnly;
+      const dbaWithFullLoc = dba + ' - ' + locLower;
       return holderLower === locLower
         || holderLower === cityOnly
-        || (dba && holderLower === dba)
+        || holderLower === dba
         || (business && holderLower === business)
-        || (fullName && holderLower === fullName);
+        || holderLower === dbaWithCity
+        || holderLower === dbaWithFullLoc;
     });
     if (matchesLocation) return;
     if (holder.length < 2) return;
@@ -6086,10 +6088,10 @@ function searchLicenseHolder() {
   // Always shown when the field is empty so picking "pharmacy holds this license" is one click.
   LOCATIONS.forEach(loc => {
     const info = LOCATION_INFO[loc] || {};
-    const dba = info.dba || loc;
-    // Prefer the business name if one exists — that's what boards actually list as the holder
-    const displayName = info.businessName || dba;
-    const searchStr = (loc + ' ' + (info.dba || '') + ' ' + (info.businessName || '')).toLowerCase();
+    const dba = info.dba || info.businessName || 'Pharmacy Innovations';
+    const city = loc.split(',')[0].trim(); // "Erie, PA" -> "Erie"
+    const displayName = dba + ' - ' + city;
+    const searchStr = (loc + ' ' + dba + ' ' + (info.businessName || '')).toLowerCase();
     if (!ql || searchStr.includes(ql)) {
       results.push({ name: displayName, type: 'location', sub: loc });
     }
