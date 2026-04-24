@@ -3641,7 +3641,7 @@ function renderPersonnelTable() {
     }).join('');
 
     return `<tr>
-      <td><strong>${p.name}</strong></td>
+      <td style="min-width:160px;white-space:nowrap"><strong>${p.name}</strong></td>
       <td>${p.role}</td>
       <td>${[...p.locations].join(', ')}</td>
       <td>${nextExp ? formatDate(nextExp.expirationDate) : 'N/A'}</td>
