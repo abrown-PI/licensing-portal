@@ -999,11 +999,16 @@
       <button class="modal-close" onclick="closeModal('employeeFormModal')">&times;</button>
     </div>
     <div class="modal-body">
+      <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:var(--radius);padding:12px;margin-bottom:16px;font-size:13px;color:#713f12;line-height:1.5">
+        <strong>⚠ Do not add anyone who has a Microsoft 365 account at Pharmacy Innovations.</strong><br>
+        365 users already appear automatically in the License Holder and Employee On Site lookups — just start typing their name. This page is only for <em>people without a 365 account</em> (new hires, contractors, techs waiting on IT provisioning).
+      </div>
       <form id="employeeForm" onsubmit="saveEmployee(event)">
         <div class="form-grid">
           <div class="form-group full-width">
             <label>Full Name *</label>
-            <input type="text" id="emp_name" required placeholder="e.g. Jane Smith">
+            <input type="text" id="emp_name" required placeholder="e.g. Jane Smith" oninput="checkEmployeeAgainstAD()">
+            <div id="emp_adWarning" style="display:none;margin-top:6px;padding:8px 10px;background:#fef2f2;border:1px solid #fecaca;border-radius:var(--radius);font-size:12px;color:#991b1b"></div>
           </div>
           <div class="form-group">
             <label>Email</label>
@@ -5268,6 +5273,8 @@ function openAddEmployee() {
   document.getElementById('employeeForm').reset();
   document.getElementById('emp_editId').value = '';
   document.getElementById('deleteEmployeeBtn').style.display = 'none';
+  const warn = document.getElementById('emp_adWarning');
+  if (warn) warn.style.display = 'none';
   populateEmployeeOfficeSelect('');
   openModal('employeeFormModal');
 }
@@ -5290,6 +5297,48 @@ function openEditEmployee(spId) {
   openModal('employeeFormModal');
 }
 
+let empAdCheckTimeout = null;
+let empAdCheckCache = {}; // query -> [users]
+
+async function lookupADByName(query) {
+  const q = (query || '').trim();
+  if (q.length < 2) return [];
+  if (empAdCheckCache[q.toLowerCase()]) return empAdCheckCache[q.toLowerCase()];
+  const token = await getToken();
+  if (!token) return [];
+  try {
+    const eq = encodeURIComponent(q);
+    const resp = await fetch(
+      `${GRAPH_BASE}/users?$filter=startswith(displayName,'${eq}') or startswith(givenName,'${eq}') or startswith(surname,'${eq}')&$top=5&$select=displayName,mail,userPrincipalName,jobTitle,officeLocation`,
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    if (!resp.ok) return [];
+    const data = await resp.json();
+    const users = data.value || [];
+    empAdCheckCache[q.toLowerCase()] = users;
+    return users;
+  } catch(e) { return []; }
+}
+
+function checkEmployeeAgainstAD() {
+  const name = document.getElementById('emp_name').value.trim();
+  const warn = document.getElementById('emp_adWarning');
+  if (!warn) return;
+  if (name.length < 2) { warn.style.display = 'none'; return; }
+
+  clearTimeout(empAdCheckTimeout);
+  empAdCheckTimeout = setTimeout(async () => {
+    const matches = await lookupADByName(name);
+    if (!matches.length) { warn.style.display = 'none'; return; }
+    const top = matches[0];
+    const email = top.mail || top.userPrincipalName || '';
+    warn.innerHTML = '⚠ <strong>' + escHtml(top.displayName) + '</strong> already has a 365 account'
+      + (email ? ' (' + escHtml(email) + ')' : '')
+      + '. Don\'t add them here — search for them on the License Holder or Employee On Site field instead.';
+    warn.style.display = 'block';
+  }, 350);
+}
+
 async function saveEmployee(ev) {
   ev.preventDefault();
   if (!canManageEmployees()) { showToast('Not allowed', 'error'); return; }
@@ -5307,6 +5356,25 @@ async function saveEmployee(ev) {
   if (userRole === ROLES.LOCATION_MANAGER && !userLocations.includes(officeLocation)) {
     showToast('You can only add employees at your assigned locations', 'error');
     return;
+  }
+
+  // Block creating a local Employee that duplicates an existing 365 user
+  if (!editId) {
+    const adMatches = await lookupADByName(displayName);
+    const exact = adMatches.find(u => (u.displayName || '').toLowerCase() === displayName.toLowerCase()
+      || ((u.mail || u.userPrincipalName || '').toLowerCase() === email && email));
+    if (exact) {
+      const exactEmail = exact.mail || exact.userPrincipalName || '';
+      const warn = document.getElementById('emp_adWarning');
+      if (warn) {
+        warn.innerHTML = '❌ <strong>' + escHtml(exact.displayName) + '</strong> already exists in Microsoft 365'
+          + (exactEmail ? ' (' + escHtml(exactEmail) + ')' : '')
+          + '. Use the License Holder / Employee On Site lookup instead — do not add them here.';
+        warn.style.display = 'block';
+      }
+      showToast('Already in 365 — please pick them from the lookup instead of creating a local Employee', 'error');
+      return;
+    }
   }
 
   const fields = {
