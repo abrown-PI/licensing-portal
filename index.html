@@ -398,6 +398,9 @@
           <select class="filter-select" id="locationFilter" onchange="renderLicenseTable()">
             <option value="">All Locations</option>
           </select>
+          <select class="filter-select" id="licenseStateFilter" onchange="renderLicenseTable()">
+            <option value="">All States</option>
+          </select>
           <select class="filter-select" id="typeFilter" onchange="renderLicenseTable()">
             <option value="">All Types</option>
             <option value="Pharmacy" style="background:#dbeafe;color:#1e40af">Pharmacy</option>
@@ -472,6 +475,9 @@
           </div>
           <select class="filter-select" id="personnelLocationFilter" onchange="renderPersonnelTable()">
             <option value="">All Locations</option>
+          </select>
+          <select class="filter-select" id="personnelStateFilter" onchange="renderPersonnelTable()">
+            <option value="">All States</option>
           </select>
           <select class="filter-select" id="personnelRoleFilter" onchange="renderPersonnelTable()">
             <option value="">All Roles</option>
@@ -3196,14 +3202,32 @@ function showLocTab(btn, tabId) {
 }
 
 // ===== LICENSE TABLE =====
+function populateLicenseStateFilter() {
+  const sel = document.getElementById('licenseStateFilter');
+  if (!sel) return;
+  const current = sel.value;
+  const states = new Set();
+  licenses.forEach(l => {
+    const s = normalizeStateName((l.licenseState || '').trim());
+    if (s) states.add(s);
+  });
+  const sorted = [...states].sort();
+  sel.innerHTML = '<option value="">All States</option>' + sorted.map(s => `<option value="${escHtml(s)}">${escHtml(s)}</option>`).join('');
+  sel.value = current;
+}
+
 function renderLicenseTable() {
   const search = document.getElementById('licenseSearch').value.toLowerCase();
   const locFilter = document.getElementById('locationFilter').value;
   const typeFilter = document.getElementById('typeFilter').value;
   const urgFilter = document.getElementById('urgencyFilter').value;
   const statFilter = document.getElementById('statusFilter').value;
+  const stateFilter = (document.getElementById('licenseStateFilter') || {}).value || '';
 
   const archFilter = document.getElementById('archiveFilter').value;
+
+  // Populate state filter options from actual license data (in addition to hardcoded list)
+  populateLicenseStateFilter();
 
   let filtered = licenses.filter(l => {
     if (!canViewLocation(l.location)) return false;
@@ -3212,6 +3236,10 @@ function renderLicenseTable() {
     if (search && !(l.state+l.licenseState+l.licenseNumber+l.location+l.licenseHolder+l.notes).toLowerCase().includes(search)) return false;
     if (locFilter && l.location !== locFilter) return false;
     if (typeFilter && l.type !== typeFilter) return false;
+    if (stateFilter) {
+      const licState = normalizeStateName(l.licenseState || '');
+      if (licState !== stateFilter) return false;
+    }
     if (statFilter && l.renewalStatus !== statFilter) return false;
     if (urgFilter) {
       const days = daysUntilExp(l.expirationDate);
@@ -3699,16 +3727,33 @@ function effectiveRenewalStatus(l) {
 }
 
 function clearPersonnelFilters() {
-  ['personnelSearch','personnelLocationFilter','personnelRoleFilter','personnelStatusFilter','personnelTypeFilter'].forEach(id => {
+  ['personnelSearch','personnelLocationFilter','personnelStateFilter','personnelRoleFilter','personnelStatusFilter','personnelTypeFilter'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.value = '';
   });
   renderPersonnelTable();
 }
 
+function populatePersonnelStateFilter() {
+  const sel = document.getElementById('personnelStateFilter');
+  if (!sel) return;
+  const current = sel.value;
+  const states = new Set();
+  licenses.forEach(l => {
+    if (l.archived) return;
+    const s = normalizeStateName((l.licenseState || '').trim());
+    if (s) states.add(s);
+  });
+  const sorted = [...states].sort();
+  sel.innerHTML = '<option value="">All States</option>' + sorted.map(s => `<option value="${escHtml(s)}">${escHtml(s)}</option>`).join('');
+  sel.value = current;
+}
+
 function renderPersonnelTable() {
+  populatePersonnelStateFilter();
   const search = document.getElementById('personnelSearch').value.toLowerCase();
   const locFilter = document.getElementById('personnelLocationFilter').value;
+  const stateFilter = (document.getElementById('personnelStateFilter') || {}).value || '';
   const roleFilter = (document.getElementById('personnelRoleFilter') || {}).value || '';
   const statusFilter = (document.getElementById('personnelStatusFilter') || {}).value || '';
   const typeFilter = (document.getElementById('personnelTypeFilter') || {}).value || '';
@@ -3722,6 +3767,7 @@ function renderPersonnelTable() {
     if (FACILITY_TYPES.has(l.type)) return; // facility/entity license, not a person
     if (l.archived) return;
     if (typeFilter && l.type !== typeFilter) return;
+    if (stateFilter && normalizeStateName((l.licenseState || '').trim()) !== stateFilter) return;
     const holder = l.licenseHolder.trim();
     // Skip holder names that match a location, DBA, or business name
     const holderLower = holder.toLowerCase();
