@@ -2122,8 +2122,18 @@ async function spUpdateItem(listName, spItemId, fields) {
   });
   if (!resp.ok) {
     const body = await resp.text();
-    console.error('SP update failed:', listName, spItemId, resp.status, body, 'fields:', fields);
-    showToast('SharePoint rejected save (' + resp.status + ') — see console', 'error');
+    const lengths = {};
+    for (const k of Object.keys(fields || {})) {
+      const v = fields[k];
+      if (typeof v === 'string') lengths[k] = v.length;
+    }
+    const overLimit = Object.entries(lengths).filter(([, n]) => n > 255).map(([k, n]) => `${k}(${n})`);
+    console.error('SP update failed:', listName, spItemId, resp.status, body,
+      '\nfield lengths:', lengths,
+      overLimit.length ? '\n>255 chars: ' + overLimit.join(', ') : '',
+      '\nfields snapshot:', JSON.stringify(fields).substring(0, 2000));
+    const reason = overLimit.length ? 'Fields too long: ' + overLimit.join(', ') : ('SharePoint rejected save (' + resp.status + ')');
+    showToast(reason + ' — see console', 'error');
     return false;
   }
   return true;
@@ -2182,7 +2192,7 @@ function licenseToSpFields(l) {
     LicenseCopyUrl: l.licenseCopyUrl || '',
     LicenseCopyName: l.licenseCopyName || '',
     LicenseCopyDate: l.licenseCopyDate || '',
-    RenewalDocs: JSON.stringify(l.renewalDocs || []),
+    RenewalDocs: JSON.stringify((l.renewalDocs || []).map(d => { const c = {...d}; delete c.dataUrl; return c; })),
     Requirements: JSON.stringify(l.requirements || [])
   };
 }
@@ -2230,7 +2240,7 @@ function inspectionToSpFields(i) {
     RelatedLicense: i.relatedLicense || '',
     Notes: i.notes || '',
     FollowupDate: i.followupDate || '',
-    InspDocs: JSON.stringify(i.inspDocs || [])
+    InspDocs: JSON.stringify((i.inspDocs || []).map(d => { const c = {...d}; delete c.dataUrl; return c; }))
   };
 }
 
@@ -5400,7 +5410,8 @@ async function addInspDoc() {
       if (url) {
         doc.url = url;
       } else {
-        doc.dataUrl = await readFileAsDataUrl(file);
+        showToast('Could not upload ' + file.name + ' to SharePoint — skipped', 'error');
+        continue;
       }
     } else {
       doc.dataUrl = await readFileAsDataUrl(file);
@@ -5542,9 +5553,8 @@ async function addRenewalDoc() {
       if (url) {
         doc.url = url;
       } else {
-        // Fallback to base64
-        const dataUrl = await readFileAsDataUrl(file);
-        doc.dataUrl = dataUrl;
+        showToast('Could not upload ' + file.name + ' to SharePoint — skipped', 'error');
+        continue;
       }
     } else {
       const dataUrl = await readFileAsDataUrl(file);
