@@ -694,7 +694,10 @@
     <div class="card">
       <div class="card-header">
         <h2>Renewal Requirements</h2>
-        <button class="btn btn-sm btn-primary admin-only-btn" onclick="openAddRenewal()">+ Add Entry</button>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-sm btn-secondary admin-only-btn" onclick="importMissingRenewals()" title="Adds any missing state+type combos from the built-in defaults">Import Defaults</button>
+          <button class="btn btn-sm btn-primary admin-only-btn" onclick="openAddRenewal()">+ Add Entry</button>
+        </div>
       </div>
       <div class="card-body">
         <p style="font-size:13px;color:var(--gray-500);margin-bottom:12px">General renewal requirements by state and license type. Always verify against the state board website before acting — rules change. Admins can edit entries.</p>
@@ -712,6 +715,7 @@
               <option value="Pharmacy / Business">Pharmacy / Business</option>
               <option value="Controlled Substance">Controlled Substance</option>
               <option value="DEA">DEA</option>
+              <option value="PTCB Certification">PTCB Certification</option>
               <option value="Other">Other</option>
             </select>
           </div>
@@ -909,6 +913,7 @@
               <option value="Pharmacy / Business">Pharmacy / Business</option>
               <option value="Controlled Substance">Controlled Substance</option>
               <option value="DEA">DEA</option>
+              <option value="PTCB Certification">PTCB Certification</option>
               <option value="Other">Other</option>
             </select>
           </div>
@@ -4529,7 +4534,7 @@ function viewStateRenewalInstructions() {
 }
 
 // ===== RENEWAL REQUIREMENTS =====
-const US_STATES = ['Alabama','Alaska','Arizona','Arkansas','California','Colorado','Connecticut','Delaware','District of Columbia','Florida','Georgia','Hawaii','Idaho','Illinois','Indiana','Iowa','Kansas','Kentucky','Louisiana','Maine','Maryland','Massachusetts','Michigan','Minnesota','Mississippi','Missouri','Montana','Nebraska','Nevada','New Hampshire','New Jersey','New Mexico','New York','North Carolina','North Dakota','Ohio','Oklahoma','Oregon','Pennsylvania','Puerto Rico','Rhode Island','South Carolina','South Dakota','Tennessee','Texas','Utah','Vermont','Virginia','Washington','West Virginia','Wisconsin','Wyoming','Federal (DEA)'];
+const US_STATES = ['Alabama','Alaska','Arizona','Arkansas','California','Colorado','Connecticut','Delaware','District of Columbia','Florida','Georgia','Hawaii','Idaho','Illinois','Indiana','Iowa','Kansas','Kentucky','Louisiana','Maine','Maryland','Massachusetts','Michigan','Minnesota','Mississippi','Missouri','Montana','Nebraska','Nevada','New Hampshire','New Jersey','New Mexico','New York','North Carolina','North Dakota','Ohio','Oklahoma','Oregon','Pennsylvania','Puerto Rico','Rhode Island','South Carolina','South Dakota','Tennessee','Texas','Utah','Vermont','Virginia','Washington','West Virginia','Wisconsin','Wyoming','Federal (DEA)','National (PTCB)','National (ExCPT)'];
 
 function populateRenewalStateSelects() {
   const main = document.getElementById('renewalStateFilter');
@@ -4719,11 +4724,28 @@ async function seedRenewalReqsIfEmpty() {
   if (!canEdit()) return;
   if (!spConnected || !spListIds[SP_LIST_RENEWALS]) return;
   if (renewalReqs.length > 0) return;
+  await importMissingRenewals({ silent: true });
+}
+
+async function importMissingRenewals(opts) {
+  opts = opts || {};
+  if (!canEdit()) { showToast('Admins only', 'error'); return; }
+  if (!spConnected || !spListIds[SP_LIST_RENEWALS]) { showToast('SharePoint not connected', 'error'); return; }
+
+  await loadRenewalReqs();
+  const have = new Set(renewalReqs.map(r => (r.state + '|' + r.licenseType).toLowerCase()));
+  const missing = RENEWAL_SEED_DATA.filter(s => !have.has((s.state + '|' + s.licenseType).toLowerCase()));
+
+  if (!missing.length) {
+    if (!opts.silent) showToast('No missing entries — already up to date', 'info');
+    return;
+  }
+
+  if (!opts.silent && !confirm('Add ' + missing.length + ' missing renewal entries from the built-in defaults? Existing entries are untouched.')) return;
 
   const today = new Date().toISOString().slice(0, 10);
-  const seeds = RENEWAL_SEED_DATA;
   let added = 0;
-  for (const s of seeds) {
+  for (const s of missing) {
     const fields = {
       Title: s.state + ' — ' + s.licenseType,
       StateName: s.state,
@@ -4741,52 +4763,277 @@ async function seedRenewalReqsIfEmpty() {
     if (result) added++;
   }
   if (added > 0) {
-    showToast('Seeded ' + added + ' renewal requirement entries', 'success');
+    showToast('Added ' + added + ' renewal entries', 'success');
+    logAudit('import', 'renewal-req', 'Defaults', 'Imported ' + added + ' missing entries');
     await loadRenewalReqs();
     renderRenewalList();
   }
 }
 
 const RENEWAL_SEED_DATA = [
+  // NATIONAL CERTIFICATIONS
+  { state:'National (PTCB)', licenseType:'PTCB Certification', renewalFrequency:'Every 2 years', renewalWindow:'~60 days before expiration', ceRequirement:'20 hours CE per cycle, incl. 1 hr pharmacy law and 1 hr patient safety. No more than 10 hrs may be home study/non-live unless approved.', fee:'$75 renewal', boardWebsite:'https://www.ptcb.org', boardPhone:'(800) 363-8012', instructions:'Renew at ptcb.org through CPhT account. CE tracked automatically if taken via PTCB-recognized providers. Criminal background disclosure required at each renewal.' },
+  { state:'National (ExCPT)', licenseType:'PTCB Certification', renewalFrequency:'Every 2 years', renewalWindow:'Before certification expiration date', ceRequirement:'20 hours CE per cycle, incl. 1 hr pharmacy law', fee:'~$49 renewal', boardWebsite:'https://www.nhanow.com/certifications/pharmacy-technician', boardPhone:'(800) 499-9092', instructions:'NHA ExCPT renewal via nhanow.com portal. Alternative certification accepted by most states.' },
+
+  // ALABAMA
+  { state:'Alabama', licenseType:'Pharmacist', renewalFrequency:'Annual (by 10/31)', renewalWindow:'Opens ~9/1', ceRequirement:'15 hours CE annually, incl. 1 hr AL law; 5 hrs live required', fee:'~$200', boardWebsite:'https://www.albop.com', boardPhone:'(205) 981-2280', instructions:'Renew online via ALBOP portal.' },
+  { state:'Alabama', licenseType:'Pharmacy Technician', renewalFrequency:'Annual', renewalWindow:'By 10/31', ceRequirement:'PTCB required; CE per national cert', fee:'~$75', boardWebsite:'https://www.albop.com', boardPhone:'(205) 981-2280', instructions:'Renew online via ALBOP portal.' },
+  { state:'Alabama', licenseType:'Pharmacy / Business', renewalFrequency:'Annual', renewalWindow:'By 10/31', ceRequirement:'N/A', fee:'~$300', boardWebsite:'https://www.albop.com', boardPhone:'(205) 981-2280', instructions:'Resident and non-resident permit renewal via ALBOP.' },
+
+  // ALASKA
+  { state:'Alaska', licenseType:'Pharmacist', renewalFrequency:'Biennial (ends 6/30 even years)', renewalWindow:'Opens ~60 days prior', ceRequirement:'30 hours per 2-yr cycle, incl. 3 hrs law', fee:'~$450', boardWebsite:'https://www.commerce.alaska.gov/web/cbpl/ProfessionalLicensing/BoardofPharmacy.aspx', boardPhone:'(907) 465-2550', instructions:'Renew via MyAlaska portal.' },
+  { state:'Alaska', licenseType:'Pharmacy Technician', renewalFrequency:'Biennial', renewalWindow:'Ends 6/30 even years', ceRequirement:'20 hours per cycle, incl. 1 hr law', fee:'~$175', boardWebsite:'https://www.commerce.alaska.gov/web/cbpl/ProfessionalLicensing/BoardofPharmacy.aspx', boardPhone:'(907) 465-2550', instructions:'Renew via MyAlaska.' },
+  { state:'Alaska', licenseType:'Pharmacy / Business', renewalFrequency:'Biennial', renewalWindow:'Ends 6/30 even years', ceRequirement:'N/A', fee:'~$600', boardWebsite:'https://www.commerce.alaska.gov/web/cbpl/ProfessionalLicensing/BoardofPharmacy.aspx', boardPhone:'(907) 465-2550', instructions:'Pharmacy and non-resident pharmacy renewals via MyAlaska.' },
+
   // ARIZONA
   { state:'Arizona', licenseType:'Pharmacist', renewalFrequency:'Biennial (odd years)', renewalWindow:'Renewal opens ~60 days before 10/31 expiration', ceRequirement:'30 hours CE per renewal, incl. 3 hrs law & 1 hr opioid/substance abuse', fee:'$250', boardWebsite:'https://pharmacy.az.gov', boardPhone:'(602) 771-2727', instructions:'Renew online via AZBOP portal. CE must be completed before submitting.' },
   { state:'Arizona', licenseType:'Pharmacy Technician', renewalFrequency:'Biennial', renewalWindow:'~60 days before expiration', ceRequirement:'20 hours CE per renewal, incl. 1 hr law', fee:'$100', boardWebsite:'https://pharmacy.az.gov', boardPhone:'(602) 771-2727', instructions:'Renew online via AZBOP portal.' },
   { state:'Arizona', licenseType:'Pharmacy / Business', renewalFrequency:'Annual', renewalWindow:'Renewal by 10/31 each year', ceRequirement:'N/A', fee:'$420', boardWebsite:'https://pharmacy.az.gov', boardPhone:'(602) 771-2727', instructions:'Submit via AZBOP online portal; inspection required every 2 years.' },
 
-  // KENTUCKY
-  { state:'Kentucky', licenseType:'Pharmacist', renewalFrequency:'Annual (by 2/28)', renewalWindow:'Renewal opens early January', ceRequirement:'15 hours CE annually (1.5 CEU), incl. 1 hr KY law every 2 yrs', fee:'$125', boardWebsite:'https://pharmacy.ky.gov', boardPhone:'(502) 573-1580', instructions:'Renew via Licensure Gateway. Upload CE if audited.' },
-  { state:'Kentucky', licenseType:'Pharmacy Technician', renewalFrequency:'Annual', renewalWindow:'By 2/28', ceRequirement:'None required for technician renewal (PTCB/NHA for national cert only)', fee:'$50', boardWebsite:'https://pharmacy.ky.gov', boardPhone:'(502) 573-1580', instructions:'Renew via Licensure Gateway.' },
-  { state:'Kentucky', licenseType:'Pharmacy / Business', renewalFrequency:'Annual', renewalWindow:'By 6/30', ceRequirement:'N/A', fee:'$275', boardWebsite:'https://pharmacy.ky.gov', boardPhone:'(502) 573-1580', instructions:'Non-resident permit renewal also available through Gateway.' },
+  // ARKANSAS
+  { state:'Arkansas', licenseType:'Pharmacist', renewalFrequency:'Annual (by 12/31)', renewalWindow:'Opens 11/1', ceRequirement:'15 hours CE annually, incl. 1 hr AR law and 3 hrs live', fee:'~$125', boardWebsite:'https://www.pharmacyboard.arkansas.gov', boardPhone:'(501) 682-0190', instructions:'Renew via ASBP online portal.' },
+  { state:'Arkansas', licenseType:'Pharmacy Technician', renewalFrequency:'Annual', renewalWindow:'By 12/31', ceRequirement:'5 hours CE annually', fee:'~$50', boardWebsite:'https://www.pharmacyboard.arkansas.gov', boardPhone:'(501) 682-0190', instructions:'Renew via ASBP portal.' },
+  { state:'Arkansas', licenseType:'Pharmacy / Business', renewalFrequency:'Annual', renewalWindow:'By 12/31', ceRequirement:'N/A', fee:'~$300', boardWebsite:'https://www.pharmacyboard.arkansas.gov', boardPhone:'(501) 682-0190', instructions:'Resident and non-resident renewals via ASBP portal.' },
 
-  // MISSISSIPPI
-  { state:'Mississippi', licenseType:'Pharmacist', renewalFrequency:'Annual (by 12/31)', renewalWindow:'Renewal opens 10/1', ceRequirement:'15 hours CE annually, incl. 1 hr live or law; 2-yr audit cycle', fee:'$150', boardWebsite:'https://www.mbp.ms.gov', boardPhone:'(601) 899-8880', instructions:'Renew online via MBP portal.' },
-  { state:'Mississippi', licenseType:'Pharmacy Technician', renewalFrequency:'Biennial', renewalWindow:'By 12/31 in renewal year', ceRequirement:'20 hours per 2-yr cycle, incl. 1 hr law', fee:'$50', boardWebsite:'https://www.mbp.ms.gov', boardPhone:'(601) 899-8880', instructions:'Renew online via MBP portal.' },
-  { state:'Mississippi', licenseType:'Pharmacy / Business', renewalFrequency:'Biennial', renewalWindow:'By 12/31', ceRequirement:'N/A', fee:'$400', boardWebsite:'https://www.mbp.ms.gov', boardPhone:'(601) 899-8880', instructions:'Resident and non-resident permits renewed online.' },
+  // CALIFORNIA
+  { state:'California', licenseType:'Pharmacist', renewalFrequency:'Biennial', renewalWindow:'Last day of birth month', ceRequirement:'30 hours CE per cycle, incl. 2 hrs law/ethics', fee:'$360', boardWebsite:'https://www.pharmacy.ca.gov', boardPhone:'(916) 518-3100', instructions:'Renew via BreEZe online portal. First-time renewals have specific requirements.' },
+  { state:'California', licenseType:'Pharmacy Technician', renewalFrequency:'Biennial', renewalWindow:'Birth month', ceRequirement:'None — but PTCB/ExCPT required to obtain/renew license', fee:'$145', boardWebsite:'https://www.pharmacy.ca.gov', boardPhone:'(916) 518-3100', instructions:'Renew via BreEZe.' },
+  { state:'California', licenseType:'Pharmacy / Business', renewalFrequency:'Annual', renewalWindow:'Per issue anniversary', ceRequirement:'N/A', fee:'$570', boardWebsite:'https://www.pharmacy.ca.gov', boardPhone:'(916) 518-3100', instructions:'Community & non-resident permits renewed via BreEZe.' },
 
-  // PENNSYLVANIA
-  { state:'Pennsylvania', licenseType:'Pharmacist', renewalFrequency:'Biennial (ends 9/30, even years)', renewalWindow:'Renewal opens 60+ days prior', ceRequirement:'30 hours per 2-yr cycle, incl. 2 hrs patient safety, 2 hrs pain/opioid', fee:'$210', boardWebsite:'https://www.pals.pa.gov', boardPhone:'(717) 783-7156', instructions:'Renew through PALS. Act 31 child abuse recognition required.' },
-  { state:'Pennsylvania', licenseType:'Pharmacy Technician', renewalFrequency:'Biennial', renewalWindow:'Ends 9/30 even years', ceRequirement:'None required; PA has no formal pharmacy tech CE requirement', fee:'$80', boardWebsite:'https://www.pals.pa.gov', boardPhone:'(717) 783-7156', instructions:'Registered pharmacy technicians renew via PALS.' },
-  { state:'Pennsylvania', licenseType:'Pharmacy / Business', renewalFrequency:'Biennial', renewalWindow:'Ends 2/28 odd years', ceRequirement:'N/A', fee:'$400', boardWebsite:'https://www.pals.pa.gov', boardPhone:'(717) 783-7156', instructions:'Renew pharmacy permit through PALS.' },
+  // COLORADO
+  { state:'Colorado', licenseType:'Pharmacist', renewalFrequency:'Biennial (10/31 odd years)', renewalWindow:'Opens ~60 days prior', ceRequirement:'24 hours per 2-yr cycle, incl. 3 hrs live; CO has no mandatory law hours but require competency', fee:'~$196', boardWebsite:'https://dpo.colorado.gov/Pharmacy', boardPhone:'(303) 894-7800', instructions:'Renew through DORA online services portal.' },
+  { state:'Colorado', licenseType:'Pharmacy Technician', renewalFrequency:'Biennial', renewalWindow:'10/31 odd years', ceRequirement:'PTCB/ExCPT required', fee:'~$50', boardWebsite:'https://dpo.colorado.gov/Pharmacy', boardPhone:'(303) 894-7800', instructions:'Renew via DORA online services.' },
+  { state:'Colorado', licenseType:'Pharmacy / Business', renewalFrequency:'Biennial', renewalWindow:'10/31 odd years', ceRequirement:'N/A', fee:'~$380', boardWebsite:'https://dpo.colorado.gov/Pharmacy', boardPhone:'(303) 894-7800', instructions:'Outlet/Other Outlet renewals via DORA.' },
+
+  // CONNECTICUT
+  { state:'Connecticut', licenseType:'Pharmacist', renewalFrequency:'Annual (by 5/31)', renewalWindow:'Opens ~60 days prior', ceRequirement:'15 hours CE annually, incl. 2 hrs safe prescribing every 2 yrs', fee:'~$250', boardWebsite:'https://portal.ct.gov/dcp/license-services-division/all-license-forms/pharmacy', boardPhone:'(860) 713-6070', instructions:'Renew through eLicense CT portal.' },
+  { state:'Connecticut', licenseType:'Pharmacy Technician', renewalFrequency:'Annual', renewalWindow:'By 5/31', ceRequirement:'PTCB/ExCPT required', fee:'~$100', boardWebsite:'https://portal.ct.gov/dcp', boardPhone:'(860) 713-6070', instructions:'Renew via eLicense CT.' },
+  { state:'Connecticut', licenseType:'Pharmacy / Business', renewalFrequency:'Annual', renewalWindow:'By 5/31', ceRequirement:'N/A', fee:'~$300', boardWebsite:'https://portal.ct.gov/dcp', boardPhone:'(860) 713-6070', instructions:'Resident and non-resident pharmacy renewals via eLicense CT.' },
+
+  // DELAWARE
+  { state:'Delaware', licenseType:'Pharmacist', renewalFrequency:'Biennial (9/30 odd years)', renewalWindow:'~60 days prior', ceRequirement:'30 hours per cycle, incl. 2 hrs live, 2 hrs controlled substance, 1 hr patient safety', fee:'~$150', boardWebsite:'https://dpr.delaware.gov/boards/pharmacy/', boardPhone:'(302) 744-4500', instructions:'Renew via DELPROS online portal.' },
+  { state:'Delaware', licenseType:'Pharmacy Technician', renewalFrequency:'Biennial', renewalWindow:'9/30 odd years', ceRequirement:'National cert required', fee:'~$80', boardWebsite:'https://dpr.delaware.gov/boards/pharmacy/', boardPhone:'(302) 744-4500', instructions:'Renew via DELPROS.' },
+  { state:'Delaware', licenseType:'Pharmacy / Business', renewalFrequency:'Biennial', renewalWindow:'9/30 odd years', ceRequirement:'N/A', fee:'~$275', boardWebsite:'https://dpr.delaware.gov/boards/pharmacy/', boardPhone:'(302) 744-4500', instructions:'Pharmacy permit renewals via DELPROS.' },
+
+  // DISTRICT OF COLUMBIA
+  { state:'District of Columbia', licenseType:'Pharmacist', renewalFrequency:'Biennial (10/31 even years)', renewalWindow:'Opens ~60 days prior', ceRequirement:'30 hours per cycle, incl. 3 hrs live, 2 hrs HIV/AIDS, 3 hrs controlled substance/opioid', fee:'~$300', boardWebsite:'https://dchealth.dc.gov/service/pharmacy-licensing', boardPhone:'(202) 724-4900', instructions:'Renew through DC Health Professional Licensing Administration portal.' },
+  { state:'District of Columbia', licenseType:'Pharmacy Technician', renewalFrequency:'Biennial', renewalWindow:'10/31 even years', ceRequirement:'PTCB/ExCPT required', fee:'~$120', boardWebsite:'https://dchealth.dc.gov/service/pharmacy-licensing', boardPhone:'(202) 724-4900', instructions:'Renew via DC HPLA portal.' },
+  { state:'District of Columbia', licenseType:'Pharmacy / Business', renewalFrequency:'Biennial', renewalWindow:'10/31 even years', ceRequirement:'N/A', fee:'~$500', boardWebsite:'https://dchealth.dc.gov/service/pharmacy-licensing', boardPhone:'(202) 724-4900', instructions:'Pharmacy facility renewals via DC HPLA.' },
 
   // FLORIDA
   { state:'Florida', licenseType:'Pharmacist', renewalFrequency:'Biennial (ends 9/30)', renewalWindow:'Opens ~90 days prior', ceRequirement:'30 hours CE per cycle, incl. 2 hrs law, 2 hrs medication errors, 2 hrs HIV/AIDS (first renewal only)', fee:'$255', boardWebsite:'https://floridaspharmacy.gov', boardPhone:'(850) 245-4292', instructions:'Renew through MQA Online Services Portal.' },
   { state:'Florida', licenseType:'Pharmacy Technician', renewalFrequency:'Biennial', renewalWindow:'Ends 12/31', ceRequirement:'20 hours CE per cycle, incl. 2 hrs law', fee:'$105', boardWebsite:'https://floridaspharmacy.gov', boardPhone:'(850) 245-4292', instructions:'Renew through MQA portal.' },
   { state:'Florida', licenseType:'Pharmacy / Business', renewalFrequency:'Biennial', renewalWindow:'Ends 2/28', ceRequirement:'N/A', fee:'$250', boardWebsite:'https://floridaspharmacy.gov', boardPhone:'(850) 245-4292', instructions:'Community & non-resident permits renewed through MQA.' },
 
-  // TEXAS
-  { state:'Texas', licenseType:'Pharmacist', renewalFrequency:'Biennial', renewalWindow:'By last day of birth month in renewal year', ceRequirement:'30 hours CE per cycle, incl. 1 hr TX law, 1 hr immunization (if admin), 2 hrs opioid (once)', fee:'$281', boardWebsite:'https://www.pharmacy.texas.gov', boardPhone:'(512) 305-8000', instructions:'Renew via TSBP Online Licensing.' },
-  { state:'Texas', licenseType:'Pharmacy Technician', renewalFrequency:'Biennial', renewalWindow:'Birth month', ceRequirement:'20 hours per cycle, incl. 1 hr TX law', fee:'$81', boardWebsite:'https://www.pharmacy.texas.gov', boardPhone:'(512) 305-8000', instructions:'Renew via TSBP Online Licensing; national cert required.' },
-  { state:'Texas', licenseType:'Pharmacy / Business', renewalFrequency:'Biennial', renewalWindow:'Per license issue date', ceRequirement:'N/A', fee:'$526', boardWebsite:'https://www.pharmacy.texas.gov', boardPhone:'(512) 305-8000', instructions:'Class A/B/C/D/E renewals via TSBP.' },
+  // GEORGIA
+  { state:'Georgia', licenseType:'Pharmacist', renewalFrequency:'Biennial (6/30 odd years)', renewalWindow:'Opens ~90 days prior', ceRequirement:'30 hours per 2-yr cycle, incl. 3 hrs GA law, 1 hr patient safety', fee:'~$125', boardWebsite:'https://gbp.georgia.gov', boardPhone:'(404) 651-8000', instructions:'Renew through Georgia Online Licensing (GOL) portal.' },
+  { state:'Georgia', licenseType:'Pharmacy Technician', renewalFrequency:'Biennial', renewalWindow:'6/30 odd years', ceRequirement:'PTCB required; no state CE', fee:'~$50', boardWebsite:'https://gbp.georgia.gov', boardPhone:'(404) 651-8000', instructions:'Renew via GOL portal.' },
+  { state:'Georgia', licenseType:'Pharmacy / Business', renewalFrequency:'Biennial', renewalWindow:'6/30 odd years', ceRequirement:'N/A', fee:'~$250', boardWebsite:'https://gbp.georgia.gov', boardPhone:'(404) 651-8000', instructions:'Pharmacy permit renewals via GOL.' },
+
+  // HAWAII
+  { state:'Hawaii', licenseType:'Pharmacist', renewalFrequency:'Biennial (ends 12/31 odd years)', renewalWindow:'Opens 11/1', ceRequirement:'30 hours per cycle, incl. 2 hrs law, 1 hr controlled substance', fee:'~$250', boardWebsite:'https://cca.hawaii.gov/pvl/boards/pharmacy/', boardPhone:'(808) 586-2694', instructions:'Renew through MyPVL portal.' },
+  { state:'Hawaii', licenseType:'Pharmacy Technician', renewalFrequency:'Biennial', renewalWindow:'Ends 12/31 odd years', ceRequirement:'PTCB/ExCPT required', fee:'~$80', boardWebsite:'https://cca.hawaii.gov/pvl/boards/pharmacy/', boardPhone:'(808) 586-2694', instructions:'Renew via MyPVL.' },
+  { state:'Hawaii', licenseType:'Pharmacy / Business', renewalFrequency:'Biennial', renewalWindow:'Ends 12/31 odd years', ceRequirement:'N/A', fee:'~$340', boardWebsite:'https://cca.hawaii.gov/pvl/boards/pharmacy/', boardPhone:'(808) 586-2694', instructions:'Pharmacy renewals via MyPVL.' },
+
+  // IDAHO
+  { state:'Idaho', licenseType:'Pharmacist', renewalFrequency:'Annual (by 6/30)', renewalWindow:'Opens 5/1', ceRequirement:'15 hours CE annually, incl. 1 hr ID law', fee:'~$150', boardWebsite:'https://bop.idaho.gov', boardPhone:'(208) 334-2356', instructions:'Renew via Idaho Board of Pharmacy online portal.' },
+  { state:'Idaho', licenseType:'Pharmacy Technician', renewalFrequency:'Annual', renewalWindow:'By 6/30', ceRequirement:'PTCB/ExCPT required', fee:'~$60', boardWebsite:'https://bop.idaho.gov', boardPhone:'(208) 334-2356', instructions:'Renew via ID BoP portal.' },
+  { state:'Idaho', licenseType:'Pharmacy / Business', renewalFrequency:'Annual', renewalWindow:'By 6/30', ceRequirement:'N/A', fee:'~$250', boardWebsite:'https://bop.idaho.gov', boardPhone:'(208) 334-2356', instructions:'Pharmacy permit renewals via ID BoP.' },
+
+  // ILLINOIS
+  { state:'Illinois', licenseType:'Pharmacist', renewalFrequency:'Biennial (3/31 even years)', renewalWindow:'Opens ~90 days prior', ceRequirement:'30 hours per cycle, incl. 3 hrs IL law, 1 hr sexual harassment, 3 hrs pain management/opioid (first renewal)', fee:'~$275', boardWebsite:'https://idfpr.illinois.gov', boardPhone:'(217) 785-0800', instructions:'Renew through IDFPR online portal.' },
+  { state:'Illinois', licenseType:'Pharmacy Technician', renewalFrequency:'Biennial', renewalWindow:'3/31 even years', ceRequirement:'PTCB/ExCPT required for registered technicians', fee:'~$60', boardWebsite:'https://idfpr.illinois.gov', boardPhone:'(217) 785-0800', instructions:'Renew via IDFPR portal.' },
+  { state:'Illinois', licenseType:'Pharmacy / Business', renewalFrequency:'Biennial', renewalWindow:'3/31 even years', ceRequirement:'N/A', fee:'~$300', boardWebsite:'https://idfpr.illinois.gov', boardPhone:'(217) 785-0800', instructions:'Pharmacy renewals via IDFPR.' },
+
+  // INDIANA
+  { state:'Indiana', licenseType:'Pharmacist', renewalFrequency:'Biennial (6/30 even years)', renewalWindow:'Opens ~90 days prior', ceRequirement:'30 hours per cycle', fee:'~$100', boardWebsite:'https://www.in.gov/pla/pharmacy/', boardPhone:'(317) 234-2067', instructions:'Renew through Indiana PLA online portal.' },
+  { state:'Indiana', licenseType:'Pharmacy Technician', renewalFrequency:'Biennial', renewalWindow:'6/30 even years', ceRequirement:'PTCB/ExCPT required', fee:'~$50', boardWebsite:'https://www.in.gov/pla/pharmacy/', boardPhone:'(317) 234-2067', instructions:'Renew via IN PLA.' },
+  { state:'Indiana', licenseType:'Pharmacy / Business', renewalFrequency:'Biennial', renewalWindow:'6/30 even years', ceRequirement:'N/A', fee:'~$200', boardWebsite:'https://www.in.gov/pla/pharmacy/', boardPhone:'(317) 234-2067', instructions:'Pharmacy permit renewals via IN PLA.' },
+
+  // IOWA
+  { state:'Iowa', licenseType:'Pharmacist', renewalFrequency:'Biennial (6/30 odd years)', renewalWindow:'Opens 4/1', ceRequirement:'30 hours per cycle, incl. 2 hrs IA law', fee:'~$180', boardWebsite:'https://pharmacy.iowa.gov', boardPhone:'(515) 281-5944', instructions:'Renew through Iowa BoP portal.' },
+  { state:'Iowa', licenseType:'Pharmacy Technician', renewalFrequency:'Biennial', renewalWindow:'6/30 odd years', ceRequirement:'PTCB required', fee:'~$80', boardWebsite:'https://pharmacy.iowa.gov', boardPhone:'(515) 281-5944', instructions:'Renew via Iowa BoP.' },
+  { state:'Iowa', licenseType:'Pharmacy / Business', renewalFrequency:'Annual', renewalWindow:'By 12/31', ceRequirement:'N/A', fee:'~$340', boardWebsite:'https://pharmacy.iowa.gov', boardPhone:'(515) 281-5944', instructions:'Pharmacy renewals annually via Iowa BoP.' },
+
+  // KANSAS
+  { state:'Kansas', licenseType:'Pharmacist', renewalFrequency:'Biennial (6/30 odd years)', renewalWindow:'Opens 5/1', ceRequirement:'30 hours per cycle, incl. 1 hr KS law/practice', fee:'~$140', boardWebsite:'https://pharmacy.ks.gov', boardPhone:'(785) 296-4056', instructions:'Renew through KS BoP online portal.' },
+  { state:'Kansas', licenseType:'Pharmacy Technician', renewalFrequency:'Biennial', renewalWindow:'6/30 odd years', ceRequirement:'PTCB/ExCPT required; 20 hrs CE per cycle', fee:'~$40', boardWebsite:'https://pharmacy.ks.gov', boardPhone:'(785) 296-4056', instructions:'Renew via KS BoP.' },
+  { state:'Kansas', licenseType:'Pharmacy / Business', renewalFrequency:'Annual', renewalWindow:'By 6/30', ceRequirement:'N/A', fee:'~$250', boardWebsite:'https://pharmacy.ks.gov', boardPhone:'(785) 296-4056', instructions:'Pharmacy renewals annually via KS BoP.' },
+
+  // KENTUCKY
+  { state:'Kentucky', licenseType:'Pharmacist', renewalFrequency:'Annual (by 2/28)', renewalWindow:'Renewal opens early January', ceRequirement:'15 hours CE annually (1.5 CEU), incl. 1 hr KY law every 2 yrs', fee:'$125', boardWebsite:'https://pharmacy.ky.gov', boardPhone:'(502) 573-1580', instructions:'Renew via Licensure Gateway. Upload CE if audited.' },
+  { state:'Kentucky', licenseType:'Pharmacy Technician', renewalFrequency:'Annual', renewalWindow:'By 2/28', ceRequirement:'None required for technician renewal (PTCB/NHA for national cert only)', fee:'$50', boardWebsite:'https://pharmacy.ky.gov', boardPhone:'(502) 573-1580', instructions:'Renew via Licensure Gateway.' },
+  { state:'Kentucky', licenseType:'Pharmacy / Business', renewalFrequency:'Annual', renewalWindow:'By 6/30', ceRequirement:'N/A', fee:'$275', boardWebsite:'https://pharmacy.ky.gov', boardPhone:'(502) 573-1580', instructions:'Non-resident permit renewal also available through Gateway.' },
+
+  // LOUISIANA
+  { state:'Louisiana', licenseType:'Pharmacist', renewalFrequency:'Annual (by 12/31)', renewalWindow:'Opens 10/1', ceRequirement:'15 hours CE annually, incl. 3 hrs live; 1 hr LA law', fee:'~$175', boardWebsite:'https://www.pharmacy.la.gov', boardPhone:'(225) 925-6496', instructions:'Renew through LA Board of Pharmacy online system.' },
+  { state:'Louisiana', licenseType:'Pharmacy Technician', renewalFrequency:'Annual', renewalWindow:'By 12/31', ceRequirement:'5 hrs CE for registered technicians; PTCB for CPhT', fee:'~$75', boardWebsite:'https://www.pharmacy.la.gov', boardPhone:'(225) 925-6496', instructions:'Renew via LABP portal.' },
+  { state:'Louisiana', licenseType:'Pharmacy / Business', renewalFrequency:'Annual', renewalWindow:'By 12/31', ceRequirement:'N/A', fee:'~$400', boardWebsite:'https://www.pharmacy.la.gov', boardPhone:'(225) 925-6496', instructions:'Resident/non-resident pharmacy renewals via LABP.' },
+
+  // MAINE
+  { state:'Maine', licenseType:'Pharmacist', renewalFrequency:'Biennial (6/30)', renewalWindow:'Opens ~60 days prior', ceRequirement:'30 hours per cycle, incl. 1 hr ME law', fee:'~$200', boardWebsite:'https://www.maine.gov/pfr/professionallicensing/professions/pharmacists/', boardPhone:'(207) 624-8603', instructions:'Renew through Maine OPLA online portal.' },
+  { state:'Maine', licenseType:'Pharmacy Technician', renewalFrequency:'Biennial', renewalWindow:'6/30', ceRequirement:'PTCB/ExCPT required', fee:'~$85', boardWebsite:'https://www.maine.gov/pfr/professionallicensing/professions/pharmacists/', boardPhone:'(207) 624-8603', instructions:'Renew via ME OPLA.' },
+  { state:'Maine', licenseType:'Pharmacy / Business', renewalFrequency:'Biennial', renewalWindow:'6/30', ceRequirement:'N/A', fee:'~$400', boardWebsite:'https://www.maine.gov/pfr/professionallicensing/professions/pharmacists/', boardPhone:'(207) 624-8603', instructions:'Pharmacy renewals via ME OPLA.' },
+
+  // MARYLAND
+  { state:'Maryland', licenseType:'Pharmacist', renewalFrequency:'Biennial (birth month)', renewalWindow:'Opens ~60 days prior', ceRequirement:'30 hours per cycle, incl. 2 hrs pharmacy law, 2 hrs drug therapy', fee:'~$250', boardWebsite:'https://health.maryland.gov/pharmacy/', boardPhone:'(410) 764-4755', instructions:'Renew through MD BoP online portal.' },
+  { state:'Maryland', licenseType:'Pharmacy Technician', renewalFrequency:'Biennial', renewalWindow:'Birth month', ceRequirement:'PTCB/ExCPT required; 20 hrs CE', fee:'~$80', boardWebsite:'https://health.maryland.gov/pharmacy/', boardPhone:'(410) 764-4755', instructions:'Renew via MD BoP.' },
+  { state:'Maryland', licenseType:'Pharmacy / Business', renewalFrequency:'Biennial', renewalWindow:'5/31 even years', ceRequirement:'N/A', fee:'~$500', boardWebsite:'https://health.maryland.gov/pharmacy/', boardPhone:'(410) 764-4755', instructions:'Pharmacy permit renewals via MD BoP.' },
+
+  // MASSACHUSETTS
+  { state:'Massachusetts', licenseType:'Pharmacist', renewalFrequency:'Biennial (ends 12/31 even years)', renewalWindow:'Opens ~90 days prior', ceRequirement:'40 hours per cycle, incl. 5 hrs law; opioid/sterile requirements', fee:'~$160', boardWebsite:'https://www.mass.gov/orgs/board-of-registration-in-pharmacy', boardPhone:'(617) 973-0950', instructions:'Renew through Massachusetts eLicensing portal.' },
+  { state:'Massachusetts', licenseType:'Pharmacy Technician', renewalFrequency:'Biennial', renewalWindow:'12/31 even years', ceRequirement:'National cert required', fee:'~$80', boardWebsite:'https://www.mass.gov/orgs/board-of-registration-in-pharmacy', boardPhone:'(617) 973-0950', instructions:'Renew via MA eLicensing.' },
+  { state:'Massachusetts', licenseType:'Pharmacy / Business', renewalFrequency:'Annual', renewalWindow:'12/31', ceRequirement:'N/A', fee:'~$700', boardWebsite:'https://www.mass.gov/orgs/board-of-registration-in-pharmacy', boardPhone:'(617) 973-0950', instructions:'Retail/non-resident/sterile compounding permits via MA eLicensing.' },
+
+  // MICHIGAN
+  { state:'Michigan', licenseType:'Pharmacist', renewalFrequency:'Biennial (6/30 even years)', renewalWindow:'Opens ~90 days prior', ceRequirement:'30 hours per cycle, incl. 1 hr pain/opioid awareness, 1 hr implicit bias, 1 hr law (mandated trainings)', fee:'~$166', boardWebsite:'https://www.michigan.gov/lara/bureau-list/bpl/health/hp-lic-health-prof/pharmacists', boardPhone:'(517) 241-0199', instructions:'Renew through Michigan LARA MiPLUS portal.' },
+  { state:'Michigan', licenseType:'Pharmacy Technician', renewalFrequency:'Biennial', renewalWindow:'6/30 even years', ceRequirement:'20 hrs CE per cycle, incl. implicit bias', fee:'~$60', boardWebsite:'https://www.michigan.gov/lara/bureau-list/bpl/health/hp-lic-health-prof/pharmacists', boardPhone:'(517) 241-0199', instructions:'Renew via MiPLUS.' },
+  { state:'Michigan', licenseType:'Pharmacy / Business', renewalFrequency:'Biennial', renewalWindow:'Ends 4/30 even years', ceRequirement:'N/A', fee:'~$265', boardWebsite:'https://www.michigan.gov/lara/bureau-list/bpl/health/hp-lic-health-prof/pharmacists', boardPhone:'(517) 241-0199', instructions:'Pharmacy renewals via MiPLUS.' },
+
+  // MINNESOTA
+  { state:'Minnesota', licenseType:'Pharmacist', renewalFrequency:'Biennial (birth month)', renewalWindow:'Opens ~90 days prior', ceRequirement:'30 hours per cycle, incl. 1 hr MN law', fee:'~$225', boardWebsite:'https://mn.gov/boards/pharmacy/', boardPhone:'(651) 201-2825', instructions:'Renew through Minnesota BoP online portal.' },
+  { state:'Minnesota', licenseType:'Pharmacy Technician', renewalFrequency:'Biennial', renewalWindow:'Birth month', ceRequirement:'PTCB/ExCPT required', fee:'~$85', boardWebsite:'https://mn.gov/boards/pharmacy/', boardPhone:'(651) 201-2825', instructions:'Renew via MN BoP.' },
+  { state:'Minnesota', licenseType:'Pharmacy / Business', renewalFrequency:'Annual', renewalWindow:'By 6/30', ceRequirement:'N/A', fee:'~$260', boardWebsite:'https://mn.gov/boards/pharmacy/', boardPhone:'(651) 201-2825', instructions:'Pharmacy renewals annually via MN BoP.' },
+
+  // MISSISSIPPI
+  { state:'Mississippi', licenseType:'Pharmacist', renewalFrequency:'Annual (by 12/31)', renewalWindow:'Renewal opens 10/1', ceRequirement:'15 hours CE annually, incl. 1 hr live or law; 2-yr audit cycle', fee:'$150', boardWebsite:'https://www.mbp.ms.gov', boardPhone:'(601) 899-8880', instructions:'Renew online via MBP portal.' },
+  { state:'Mississippi', licenseType:'Pharmacy Technician', renewalFrequency:'Biennial', renewalWindow:'By 12/31 in renewal year', ceRequirement:'20 hours per 2-yr cycle, incl. 1 hr law', fee:'$50', boardWebsite:'https://www.mbp.ms.gov', boardPhone:'(601) 899-8880', instructions:'Renew online via MBP portal.' },
+  { state:'Mississippi', licenseType:'Pharmacy / Business', renewalFrequency:'Biennial', renewalWindow:'By 12/31', ceRequirement:'N/A', fee:'$400', boardWebsite:'https://www.mbp.ms.gov', boardPhone:'(601) 899-8880', instructions:'Resident and non-resident permits renewed online.' },
+
+  // MISSOURI
+  { state:'Missouri', licenseType:'Pharmacist', renewalFrequency:'Biennial (10/31 odd years)', renewalWindow:'Opens 9/1', ceRequirement:'30 hours per cycle, incl. 6 hrs live; 2 hrs MO law', fee:'~$125', boardWebsite:'https://pr.mo.gov/pharmacists.asp', boardPhone:'(573) 751-0091', instructions:'Renew through Missouri Professional Registration online portal.' },
+  { state:'Missouri', licenseType:'Pharmacy Technician', renewalFrequency:'Biennial', renewalWindow:'10/31 odd years', ceRequirement:'National cert required', fee:'~$35', boardWebsite:'https://pr.mo.gov/pharmacists.asp', boardPhone:'(573) 751-0091', instructions:'Renew via MO PR portal.' },
+  { state:'Missouri', licenseType:'Pharmacy / Business', renewalFrequency:'Biennial', renewalWindow:'10/31 odd years', ceRequirement:'N/A', fee:'~$250', boardWebsite:'https://pr.mo.gov/pharmacists.asp', boardPhone:'(573) 751-0091', instructions:'Pharmacy permits renewed via MO PR.' },
+
+  // MONTANA
+  { state:'Montana', licenseType:'Pharmacist', renewalFrequency:'Annual (by 6/30)', renewalWindow:'Opens 5/1', ceRequirement:'15 hours CE annually, incl. 1 hr MT law', fee:'~$175', boardWebsite:'https://boards.bsd.dli.mt.gov/pha', boardPhone:'(406) 841-2356', instructions:'Renew via MT DLI online portal.' },
+  { state:'Montana', licenseType:'Pharmacy Technician', renewalFrequency:'Annual', renewalWindow:'By 6/30', ceRequirement:'PTCB/ExCPT required', fee:'~$50', boardWebsite:'https://boards.bsd.dli.mt.gov/pha', boardPhone:'(406) 841-2356', instructions:'Renew via MT DLI.' },
+  { state:'Montana', licenseType:'Pharmacy / Business', renewalFrequency:'Annual', renewalWindow:'By 6/30', ceRequirement:'N/A', fee:'~$250', boardWebsite:'https://boards.bsd.dli.mt.gov/pha', boardPhone:'(406) 841-2356', instructions:'Pharmacy renewals via MT DLI.' },
+
+  // NEBRASKA
+  { state:'Nebraska', licenseType:'Pharmacist', renewalFrequency:'Biennial (10/31 odd years)', renewalWindow:'Opens 9/1', ceRequirement:'30 hours per cycle, incl. 1 hr NE law', fee:'~$150', boardWebsite:'https://dhhs.ne.gov/licensure/Pages/Pharmacist.aspx', boardPhone:'(402) 471-2118', instructions:'Renew through Nebraska DHHS online portal.' },
+  { state:'Nebraska', licenseType:'Pharmacy Technician', renewalFrequency:'Biennial', renewalWindow:'10/31 odd years', ceRequirement:'PTCB required', fee:'~$40', boardWebsite:'https://dhhs.ne.gov/licensure/Pages/Pharmacist.aspx', boardPhone:'(402) 471-2118', instructions:'Renew via NE DHHS.' },
+  { state:'Nebraska', licenseType:'Pharmacy / Business', renewalFrequency:'Biennial', renewalWindow:'10/31 odd years', ceRequirement:'N/A', fee:'~$250', boardWebsite:'https://dhhs.ne.gov/licensure/Pages/Pharmacist.aspx', boardPhone:'(402) 471-2118', instructions:'Pharmacy renewals via NE DHHS.' },
+
+  // NEVADA
+  { state:'Nevada', licenseType:'Pharmacist', renewalFrequency:'Annual (by 10/31)', renewalWindow:'Opens 8/1', ceRequirement:'15 hours CE annually, incl. 1 hr NV law/ethics', fee:'~$300', boardWebsite:'https://bop.nv.gov', boardPhone:'(775) 850-1440', instructions:'Renew through Nevada BoP online portal.' },
+  { state:'Nevada', licenseType:'Pharmacy Technician', renewalFrequency:'Annual', renewalWindow:'By 10/31', ceRequirement:'PTCB required; 10 hrs CE annually', fee:'~$100', boardWebsite:'https://bop.nv.gov', boardPhone:'(775) 850-1440', instructions:'Renew via NV BoP.' },
+  { state:'Nevada', licenseType:'Pharmacy / Business', renewalFrequency:'Annual', renewalWindow:'By 10/31', ceRequirement:'N/A', fee:'~$525', boardWebsite:'https://bop.nv.gov', boardPhone:'(775) 850-1440', instructions:'Pharmacy renewals annually via NV BoP.' },
+
+  // NEW HAMPSHIRE
+  { state:'New Hampshire', licenseType:'Pharmacist', renewalFrequency:'Biennial (6/30)', renewalWindow:'Opens 5/1', ceRequirement:'30 hours per cycle', fee:'~$210', boardWebsite:'https://www.oplc.nh.gov/pharmacy', boardPhone:'(603) 271-2350', instructions:'Renew through NH OPLC portal.' },
+  { state:'New Hampshire', licenseType:'Pharmacy Technician', renewalFrequency:'Biennial', renewalWindow:'6/30', ceRequirement:'PTCB/ExCPT required', fee:'~$100', boardWebsite:'https://www.oplc.nh.gov/pharmacy', boardPhone:'(603) 271-2350', instructions:'Renew via NH OPLC.' },
+  { state:'New Hampshire', licenseType:'Pharmacy / Business', renewalFrequency:'Biennial', renewalWindow:'6/30', ceRequirement:'N/A', fee:'~$450', boardWebsite:'https://www.oplc.nh.gov/pharmacy', boardPhone:'(603) 271-2350', instructions:'Pharmacy renewals via NH OPLC.' },
+
+  // NEW JERSEY
+  { state:'New Jersey', licenseType:'Pharmacist', renewalFrequency:'Biennial (ends 4/30 even years)', renewalWindow:'Opens ~60 days prior', ceRequirement:'30 hours per cycle, incl. 2 hrs patient safety, 2 hrs opioid/pain mgmt, 1 hr NJ law', fee:'~$225', boardWebsite:'https://www.njconsumeraffairs.gov/pha/', boardPhone:'(973) 504-6450', instructions:'Renew through NJ Division of Consumer Affairs online portal.' },
+  { state:'New Jersey', licenseType:'Pharmacy Technician', renewalFrequency:'Biennial', renewalWindow:'4/30 even years', ceRequirement:'PTCB/ExCPT required; 20 hrs CE', fee:'~$80', boardWebsite:'https://www.njconsumeraffairs.gov/pha/', boardPhone:'(973) 504-6450', instructions:'Renew via NJ DCA portal.' },
+  { state:'New Jersey', licenseType:'Pharmacy / Business', renewalFrequency:'Biennial', renewalWindow:'4/30 even years', ceRequirement:'N/A', fee:'~$300', boardWebsite:'https://www.njconsumeraffairs.gov/pha/', boardPhone:'(973) 504-6450', instructions:'Retail/non-resident/sterile pharmacy permits via NJ DCA.' },
+
+  // NEW MEXICO
+  { state:'New Mexico', licenseType:'Pharmacist', renewalFrequency:'Biennial (11/30 odd years)', renewalWindow:'Opens ~60 days prior', ceRequirement:'30 hours per cycle, incl. 2 hrs NM law', fee:'~$120', boardWebsite:'https://www.rld.nm.gov/boards-and-commissions/individual-boards-and-commissions/pharmacy/', boardPhone:'(505) 222-9830', instructions:'Renew through NM RLD online portal.' },
+  { state:'New Mexico', licenseType:'Pharmacy Technician', renewalFrequency:'Biennial', renewalWindow:'11/30 odd years', ceRequirement:'PTCB required', fee:'~$50', boardWebsite:'https://www.rld.nm.gov/boards-and-commissions/individual-boards-and-commissions/pharmacy/', boardPhone:'(505) 222-9830', instructions:'Renew via NM RLD.' },
+  { state:'New Mexico', licenseType:'Pharmacy / Business', renewalFrequency:'Biennial', renewalWindow:'11/30 odd years', ceRequirement:'N/A', fee:'~$250', boardWebsite:'https://www.rld.nm.gov/boards-and-commissions/individual-boards-and-commissions/pharmacy/', boardPhone:'(505) 222-9830', instructions:'Pharmacy renewals via NM RLD.' },
+
+  // NEW YORK
+  { state:'New York', licenseType:'Pharmacist', renewalFrequency:'Triennial (3 years)', renewalWindow:'Opens ~90 days prior', ceRequirement:'45 hours per 3-yr cycle, incl. 3 hrs sterile compounding (if dispensing) and child abuse training (one-time)', fee:'~$205', boardWebsite:'http://www.op.nysed.gov/prof/pharm/', boardPhone:'(518) 474-3817', instructions:'Renew through NYSED Office of Professions online portal.' },
+  { state:'New York', licenseType:'Pharmacy Technician', renewalFrequency:'N/A — NY does not register pharmacy technicians', renewalWindow:'N/A', ceRequirement:'N/A — national PTCB/ExCPT cert tracked separately', fee:'N/A', boardWebsite:'http://www.op.nysed.gov/prof/pharm/', boardPhone:'(518) 474-3817', instructions:'New York does not license pharmacy technicians; employers supervise under pharmacist licensure.' },
+  { state:'New York', licenseType:'Pharmacy / Business', renewalFrequency:'Triennial', renewalWindow:'Opens ~90 days prior', ceRequirement:'N/A', fee:'~$525', boardWebsite:'http://www.op.nysed.gov/prof/pharm/', boardPhone:'(518) 474-3817', instructions:'Pharmacy establishment registrations via NYSED OP.' },
+
+  // NORTH CAROLINA
+  { state:'North Carolina', licenseType:'Pharmacist', renewalFrequency:'Annual (by 12/31)', renewalWindow:'Opens 10/1', ceRequirement:'15 hours CE annually, incl. 1 hr immunization (if admin), 2 hrs NC law every 2 yrs', fee:'~$190', boardWebsite:'https://www.ncbop.org', boardPhone:'(919) 246-1050', instructions:'Renew through NC Board of Pharmacy online portal.' },
+  { state:'North Carolina', licenseType:'Pharmacy Technician', renewalFrequency:'Annual', renewalWindow:'By 12/31', ceRequirement:'PTCB/ExCPT required', fee:'~$50', boardWebsite:'https://www.ncbop.org', boardPhone:'(919) 246-1050', instructions:'Renew via NC BoP.' },
+  { state:'North Carolina', licenseType:'Pharmacy / Business', renewalFrequency:'Annual', renewalWindow:'By 12/31', ceRequirement:'N/A', fee:'~$425', boardWebsite:'https://www.ncbop.org', boardPhone:'(919) 246-1050', instructions:'Pharmacy renewals via NC BoP.' },
+
+  // NORTH DAKOTA
+  { state:'North Dakota', licenseType:'Pharmacist', renewalFrequency:'Annual (by 3/31)', renewalWindow:'Opens 2/1', ceRequirement:'15 hours CE annually, incl. 1 hr ND law', fee:'~$150', boardWebsite:'https://www.nodakpharmacy.com', boardPhone:'(701) 328-9535', instructions:'Renew through ND BoP online portal.' },
+  { state:'North Dakota', licenseType:'Pharmacy Technician', renewalFrequency:'Annual', renewalWindow:'By 3/31', ceRequirement:'PTCB required for CPhT', fee:'~$30', boardWebsite:'https://www.nodakpharmacy.com', boardPhone:'(701) 328-9535', instructions:'Renew via ND BoP.' },
+  { state:'North Dakota', licenseType:'Pharmacy / Business', renewalFrequency:'Annual', renewalWindow:'By 3/31', ceRequirement:'N/A', fee:'~$225', boardWebsite:'https://www.nodakpharmacy.com', boardPhone:'(701) 328-9535', instructions:'Pharmacy renewals via ND BoP.' },
 
   // OHIO
   { state:'Ohio', licenseType:'Pharmacist', renewalFrequency:'Annual (by 9/15)', renewalWindow:'Opens 6/1', ceRequirement:'30 hours per 2-yr cycle (biennial cycle), incl. 3 hrs law, 0.5 hr OARRS', fee:'$140', boardWebsite:'https://www.pharmacy.ohio.gov', boardPhone:'(614) 466-4143', instructions:'Renew via eLicense Ohio portal.' },
   { state:'Ohio', licenseType:'Pharmacy Technician', renewalFrequency:'Biennial', renewalWindow:'By 9/15', ceRequirement:'20 hours per 2-yr cycle, incl. 1 hr law', fee:'$50', boardWebsite:'https://www.pharmacy.ohio.gov', boardPhone:'(614) 466-4143', instructions:'Registered CPhT renew via eLicense Ohio.' },
   { state:'Ohio', licenseType:'Pharmacy / Business', renewalFrequency:'Annual', renewalWindow:'By 4/1', ceRequirement:'N/A', fee:'$250', boardWebsite:'https://www.pharmacy.ohio.gov', boardPhone:'(614) 466-4143', instructions:'TDDD / TCD renewals via eLicense Ohio.' },
 
-  // CALIFORNIA
-  { state:'California', licenseType:'Pharmacist', renewalFrequency:'Biennial', renewalWindow:'Last day of birth month', ceRequirement:'30 hours CE per cycle, incl. 2 hrs law/ethics', fee:'$360', boardWebsite:'https://www.pharmacy.ca.gov', boardPhone:'(916) 518-3100', instructions:'Renew via BreEZe online portal. First-time renewals have specific requirements.' },
-  { state:'California', licenseType:'Pharmacy Technician', renewalFrequency:'Biennial', renewalWindow:'Birth month', ceRequirement:'None — but PTCB/ExCPT required to obtain/renew license', fee:'$145', boardWebsite:'https://www.pharmacy.ca.gov', boardPhone:'(916) 518-3100', instructions:'Renew via BreEZe.' },
-  { state:'California', licenseType:'Pharmacy / Business', renewalFrequency:'Annual', renewalWindow:'Per issue anniversary', ceRequirement:'N/A', fee:'$570', boardWebsite:'https://www.pharmacy.ca.gov', boardPhone:'(916) 518-3100', instructions:'Community & non-resident permits renewed via BreEZe.' },
+  // OKLAHOMA
+  { state:'Oklahoma', licenseType:'Pharmacist', renewalFrequency:'Annual (by 6/30)', renewalWindow:'Opens 5/1', ceRequirement:'15 hours CE annually, incl. 1 hr OK law', fee:'~$200', boardWebsite:'https://pharmacy.ok.gov', boardPhone:'(405) 521-3815', instructions:'Renew through OK BoP online portal.' },
+  { state:'Oklahoma', licenseType:'Pharmacy Technician', renewalFrequency:'Annual', renewalWindow:'By 6/30', ceRequirement:'PTCB required', fee:'~$45', boardWebsite:'https://pharmacy.ok.gov', boardPhone:'(405) 521-3815', instructions:'Renew via OK BoP.' },
+  { state:'Oklahoma', licenseType:'Pharmacy / Business', renewalFrequency:'Annual', renewalWindow:'By 6/30', ceRequirement:'N/A', fee:'~$400', boardWebsite:'https://pharmacy.ok.gov', boardPhone:'(405) 521-3815', instructions:'Pharmacy renewals via OK BoP.' },
+
+  // OREGON
+  { state:'Oregon', licenseType:'Pharmacist', renewalFrequency:'Biennial (6/30 odd years)', renewalWindow:'Opens 5/1', ceRequirement:'30 hours per cycle, incl. 1 hr pain management and 1 hr culturally responsive care; 1 hr OR law', fee:'~$235', boardWebsite:'https://www.oregon.gov/pharmacy/', boardPhone:'(971) 673-0001', instructions:'Renew through OR BoP online portal.' },
+  { state:'Oregon', licenseType:'Pharmacy Technician', renewalFrequency:'Biennial', renewalWindow:'6/30 odd years', ceRequirement:'PTCB/ExCPT required', fee:'~$90', boardWebsite:'https://www.oregon.gov/pharmacy/', boardPhone:'(971) 673-0001', instructions:'Renew via OR BoP.' },
+  { state:'Oregon', licenseType:'Pharmacy / Business', renewalFrequency:'Biennial', renewalWindow:'6/30 odd years', ceRequirement:'N/A', fee:'~$400', boardWebsite:'https://www.oregon.gov/pharmacy/', boardPhone:'(971) 673-0001', instructions:'Pharmacy renewals via OR BoP.' },
+
+  // PENNSYLVANIA
+  { state:'Pennsylvania', licenseType:'Pharmacist', renewalFrequency:'Biennial (ends 9/30, even years)', renewalWindow:'Renewal opens 60+ days prior', ceRequirement:'30 hours per 2-yr cycle, incl. 2 hrs patient safety, 2 hrs pain/opioid', fee:'$210', boardWebsite:'https://www.pals.pa.gov', boardPhone:'(717) 783-7156', instructions:'Renew through PALS. Act 31 child abuse recognition required.' },
+  { state:'Pennsylvania', licenseType:'Pharmacy Technician', renewalFrequency:'Biennial', renewalWindow:'Ends 9/30 even years', ceRequirement:'None required; PA has no formal pharmacy tech CE requirement', fee:'$80', boardWebsite:'https://www.pals.pa.gov', boardPhone:'(717) 783-7156', instructions:'Registered pharmacy technicians renew via PALS.' },
+  { state:'Pennsylvania', licenseType:'Pharmacy / Business', renewalFrequency:'Biennial', renewalWindow:'Ends 2/28 odd years', ceRequirement:'N/A', fee:'$400', boardWebsite:'https://www.pals.pa.gov', boardPhone:'(717) 783-7156', instructions:'Renew pharmacy permit through PALS.' },
+
+  // PUERTO RICO
+  { state:'Puerto Rico', licenseType:'Pharmacist', renewalFrequency:'Triennial', renewalWindow:'Opens ~90 days prior', ceRequirement:'45 hours per 3-yr cycle, incl. PR law', fee:'~$250', boardWebsite:'https://www.salud.pr.gov', boardPhone:'(787) 765-2929', instructions:'Renew through PR Department of Health Colegio de Farmacéuticos.' },
+  { state:'Puerto Rico', licenseType:'Pharmacy Technician', renewalFrequency:'Triennial', renewalWindow:'Opens ~90 days prior', ceRequirement:'National cert required', fee:'~$120', boardWebsite:'https://www.salud.pr.gov', boardPhone:'(787) 765-2929', instructions:'Renew via PR DoH.' },
+  { state:'Puerto Rico', licenseType:'Pharmacy / Business', renewalFrequency:'Annual', renewalWindow:'Per issue anniversary', ceRequirement:'N/A', fee:'~$500', boardWebsite:'https://www.salud.pr.gov', boardPhone:'(787) 765-2929', instructions:'Pharmacy renewals via PR DoH.' },
+
+  // RHODE ISLAND
+  { state:'Rhode Island', licenseType:'Pharmacist', renewalFrequency:'Biennial (birth month)', renewalWindow:'Opens ~60 days prior', ceRequirement:'30 hours per cycle, incl. 1 hr RI law', fee:'~$300', boardWebsite:'https://health.ri.gov/licenses/detail.php?id=238', boardPhone:'(401) 222-5960', instructions:'Renew through RI Dept of Health portal.' },
+  { state:'Rhode Island', licenseType:'Pharmacy Technician', renewalFrequency:'Biennial', renewalWindow:'Birth month', ceRequirement:'PTCB/ExCPT required', fee:'~$100', boardWebsite:'https://health.ri.gov/licenses/detail.php?id=238', boardPhone:'(401) 222-5960', instructions:'Renew via RI DoH.' },
+  { state:'Rhode Island', licenseType:'Pharmacy / Business', renewalFrequency:'Annual', renewalWindow:'Per issue anniversary', ceRequirement:'N/A', fee:'~$500', boardWebsite:'https://health.ri.gov/licenses/detail.php?id=238', boardPhone:'(401) 222-5960', instructions:'Pharmacy renewals via RI DoH.' },
+
+  // SOUTH CAROLINA
+  { state:'South Carolina', licenseType:'Pharmacist', renewalFrequency:'Biennial (ends 4/30 even years)', renewalWindow:'Opens ~90 days prior', ceRequirement:'30 hours per cycle, incl. 1 hr SC law, 2 hrs controlled substance', fee:'~$125', boardWebsite:'https://llr.sc.gov/phar/', boardPhone:'(803) 896-4700', instructions:'Renew through SC LLR online portal.' },
+  { state:'South Carolina', licenseType:'Pharmacy Technician', renewalFrequency:'Biennial', renewalWindow:'4/30 even years', ceRequirement:'PTCB/ExCPT required', fee:'~$60', boardWebsite:'https://llr.sc.gov/phar/', boardPhone:'(803) 896-4700', instructions:'Renew via SC LLR.' },
+  { state:'South Carolina', licenseType:'Pharmacy / Business', renewalFrequency:'Biennial', renewalWindow:'4/30 even years', ceRequirement:'N/A', fee:'~$250', boardWebsite:'https://llr.sc.gov/phar/', boardPhone:'(803) 896-4700', instructions:'Pharmacy renewals via SC LLR.' },
+
+  // SOUTH DAKOTA
+  { state:'South Dakota', licenseType:'Pharmacist', renewalFrequency:'Annual (by 1/1)', renewalWindow:'Opens 11/1', ceRequirement:'12 hours CE annually, incl. 1 hr SD law every 2 yrs', fee:'~$100', boardWebsite:'https://pharmacy.sd.gov', boardPhone:'(605) 362-2737', instructions:'Renew through SD BoP online portal.' },
+  { state:'South Dakota', licenseType:'Pharmacy Technician', renewalFrequency:'Annual', renewalWindow:'By 1/1', ceRequirement:'PTCB/ExCPT required', fee:'~$30', boardWebsite:'https://pharmacy.sd.gov', boardPhone:'(605) 362-2737', instructions:'Renew via SD BoP.' },
+  { state:'South Dakota', licenseType:'Pharmacy / Business', renewalFrequency:'Annual', renewalWindow:'By 1/1', ceRequirement:'N/A', fee:'~$200', boardWebsite:'https://pharmacy.sd.gov', boardPhone:'(605) 362-2737', instructions:'Pharmacy renewals via SD BoP.' },
+
+  // TENNESSEE
+  { state:'Tennessee', licenseType:'Pharmacist', renewalFrequency:'Biennial (birth month)', renewalWindow:'Opens ~60 days prior', ceRequirement:'30 hours per cycle, incl. 2 hrs TN law, 2 hrs controlled substance', fee:'~$170', boardWebsite:'https://www.tn.gov/health/health-program-areas/health-professional-boards/pharmacy-board.html', boardPhone:'(615) 741-2718', instructions:'Renew through TN Department of Health portal.' },
+  { state:'Tennessee', licenseType:'Pharmacy Technician', renewalFrequency:'Biennial', renewalWindow:'Birth month', ceRequirement:'PTCB required; 20 hrs CE', fee:'~$50', boardWebsite:'https://www.tn.gov/health/health-program-areas/health-professional-boards/pharmacy-board.html', boardPhone:'(615) 741-2718', instructions:'Renew via TN DoH.' },
+  { state:'Tennessee', licenseType:'Pharmacy / Business', renewalFrequency:'Biennial', renewalWindow:'Per issue anniversary', ceRequirement:'N/A', fee:'~$350', boardWebsite:'https://www.tn.gov/health/health-program-areas/health-professional-boards/pharmacy-board.html', boardPhone:'(615) 741-2718', instructions:'Pharmacy renewals via TN DoH.' },
+
+  // TEXAS
+  { state:'Texas', licenseType:'Pharmacist', renewalFrequency:'Biennial', renewalWindow:'By last day of birth month in renewal year', ceRequirement:'30 hours CE per cycle, incl. 1 hr TX law, 1 hr immunization (if admin), 2 hrs opioid (once)', fee:'$281', boardWebsite:'https://www.pharmacy.texas.gov', boardPhone:'(512) 305-8000', instructions:'Renew via TSBP Online Licensing.' },
+  { state:'Texas', licenseType:'Pharmacy Technician', renewalFrequency:'Biennial', renewalWindow:'Birth month', ceRequirement:'20 hours per cycle, incl. 1 hr TX law', fee:'$81', boardWebsite:'https://www.pharmacy.texas.gov', boardPhone:'(512) 305-8000', instructions:'Renew via TSBP Online Licensing; national cert required.' },
+  { state:'Texas', licenseType:'Pharmacy / Business', renewalFrequency:'Biennial', renewalWindow:'Per license issue date', ceRequirement:'N/A', fee:'$526', boardWebsite:'https://www.pharmacy.texas.gov', boardPhone:'(512) 305-8000', instructions:'Class A/B/C/D/E renewals via TSBP.' },
+
+  // UTAH
+  { state:'Utah', licenseType:'Pharmacist', renewalFrequency:'Biennial (9/30 odd years)', renewalWindow:'Opens 8/1', ceRequirement:'30 hours per cycle, incl. 15 hrs live, 1 hr UT law', fee:'~$125', boardWebsite:'https://dopl.utah.gov/pharm/', boardPhone:'(801) 530-6628', instructions:'Renew through Utah DOPL online portal.' },
+  { state:'Utah', licenseType:'Pharmacy Technician', renewalFrequency:'Biennial', renewalWindow:'9/30 odd years', ceRequirement:'PTCB/ExCPT required; 20 hrs CE', fee:'~$50', boardWebsite:'https://dopl.utah.gov/pharm/', boardPhone:'(801) 530-6628', instructions:'Renew via UT DOPL.' },
+  { state:'Utah', licenseType:'Pharmacy / Business', renewalFrequency:'Biennial', renewalWindow:'9/30 odd years', ceRequirement:'N/A', fee:'~$250', boardWebsite:'https://dopl.utah.gov/pharm/', boardPhone:'(801) 530-6628', instructions:'Pharmacy renewals via UT DOPL.' },
+
+  // VERMONT
+  { state:'Vermont', licenseType:'Pharmacist', renewalFrequency:'Biennial (7/31 even years)', renewalWindow:'Opens ~60 days prior', ceRequirement:'30 hours per cycle, incl. 2 hrs VT law, pain mgmt/opioid required', fee:'~$250', boardWebsite:'https://sos.vermont.gov/pharmacy/', boardPhone:'(802) 828-2373', instructions:'Renew through VT Office of Professional Regulation portal.' },
+  { state:'Vermont', licenseType:'Pharmacy Technician', renewalFrequency:'Biennial', renewalWindow:'7/31 even years', ceRequirement:'PTCB/ExCPT required', fee:'~$80', boardWebsite:'https://sos.vermont.gov/pharmacy/', boardPhone:'(802) 828-2373', instructions:'Renew via VT OPR.' },
+  { state:'Vermont', licenseType:'Pharmacy / Business', renewalFrequency:'Biennial', renewalWindow:'7/31 even years', ceRequirement:'N/A', fee:'~$400', boardWebsite:'https://sos.vermont.gov/pharmacy/', boardPhone:'(802) 828-2373', instructions:'Pharmacy renewals via VT OPR.' },
+
+  // VIRGINIA
+  { state:'Virginia', licenseType:'Pharmacist', renewalFrequency:'Annual (by 12/31)', renewalWindow:'Opens 10/1', ceRequirement:'15 hours CE annually, incl. 1 hr VA law every 2 yrs', fee:'~$90', boardWebsite:'https://www.dhp.virginia.gov/Boards/Pharmacy/', boardPhone:'(804) 367-4456', instructions:'Renew through VA DHP online portal.' },
+  { state:'Virginia', licenseType:'Pharmacy Technician', renewalFrequency:'Annual', renewalWindow:'By 12/31', ceRequirement:'PTCB/ExCPT required; 5 hrs CE', fee:'~$35', boardWebsite:'https://www.dhp.virginia.gov/Boards/Pharmacy/', boardPhone:'(804) 367-4456', instructions:'Renew via VA DHP.' },
+  { state:'Virginia', licenseType:'Pharmacy / Business', renewalFrequency:'Annual', renewalWindow:'By 12/31', ceRequirement:'N/A', fee:'~$270', boardWebsite:'https://www.dhp.virginia.gov/Boards/Pharmacy/', boardPhone:'(804) 367-4456', instructions:'Pharmacy renewals via VA DHP.' },
+
+  // WASHINGTON
+  { state:'Washington', licenseType:'Pharmacist', renewalFrequency:'Annual (birth month)', renewalWindow:'Opens ~60 days prior', ceRequirement:'15 hours CE annually, incl. 1 hr suicide prevention (one-time)', fee:'~$100', boardWebsite:'https://www.doh.wa.gov/LicensesPermitsandCertificates/ProfessionsNewReneworUpdate/PharmacistCommission', boardPhone:'(360) 236-4825', instructions:'Renew through WA DOH online portal.' },
+  { state:'Washington', licenseType:'Pharmacy Technician', renewalFrequency:'Annual', renewalWindow:'Birth month', ceRequirement:'PTCB/ExCPT required', fee:'~$65', boardWebsite:'https://www.doh.wa.gov', boardPhone:'(360) 236-4825', instructions:'Renew via WA DOH.' },
+  { state:'Washington', licenseType:'Pharmacy / Business', renewalFrequency:'Annual', renewalWindow:'Per issue anniversary', ceRequirement:'N/A', fee:'~$370', boardWebsite:'https://www.doh.wa.gov', boardPhone:'(360) 236-4825', instructions:'Pharmacy renewals via WA DOH.' },
+
+  // WEST VIRGINIA
+  { state:'West Virginia', licenseType:'Pharmacist', renewalFrequency:'Annual (by 7/1)', renewalWindow:'Opens 5/1', ceRequirement:'15 hours CE annually, incl. 1 hr WV law and 2 hrs best practice for controlled substances', fee:'~$160', boardWebsite:'https://www.wvbop.com', boardPhone:'(304) 558-0558', instructions:'Renew through WV BoP online portal.' },
+  { state:'West Virginia', licenseType:'Pharmacy Technician', renewalFrequency:'Annual', renewalWindow:'By 7/1', ceRequirement:'PTCB/ExCPT required', fee:'~$75', boardWebsite:'https://www.wvbop.com', boardPhone:'(304) 558-0558', instructions:'Renew via WV BoP.' },
+  { state:'West Virginia', licenseType:'Pharmacy / Business', renewalFrequency:'Annual', renewalWindow:'By 7/1', ceRequirement:'N/A', fee:'~$275', boardWebsite:'https://www.wvbop.com', boardPhone:'(304) 558-0558', instructions:'Pharmacy renewals via WV BoP.' },
+
+  // WISCONSIN
+  { state:'Wisconsin', licenseType:'Pharmacist', renewalFrequency:'Biennial (5/31 even years)', renewalWindow:'Opens ~60 days prior', ceRequirement:'30 hours per cycle', fee:'~$140', boardWebsite:'https://dsps.wi.gov/Pages/Professions/Pharmacist/Default.aspx', boardPhone:'(608) 266-2112', instructions:'Renew through WI DSPS online portal.' },
+  { state:'Wisconsin', licenseType:'Pharmacy Technician', renewalFrequency:'N/A — WI does not separately license pharmacy technicians', renewalWindow:'N/A', ceRequirement:'PTCB national cert tracked separately', fee:'N/A', boardWebsite:'https://dsps.wi.gov', boardPhone:'(608) 266-2112', instructions:'Wisconsin does not license pharmacy technicians at the state level.' },
+  { state:'Wisconsin', licenseType:'Pharmacy / Business', renewalFrequency:'Biennial', renewalWindow:'6/30 odd years', ceRequirement:'N/A', fee:'~$200', boardWebsite:'https://dsps.wi.gov/Pages/Professions/Pharmacist/Default.aspx', boardPhone:'(608) 266-2112', instructions:'Pharmacy renewals via WI DSPS.' },
+
+  // WYOMING
+  { state:'Wyoming', licenseType:'Pharmacist', renewalFrequency:'Annual (by 10/31)', renewalWindow:'Opens 9/1', ceRequirement:'12 hours CE annually, incl. 1 hr WY law', fee:'~$250', boardWebsite:'https://pharmacyboard.wyo.gov', boardPhone:'(307) 634-9636', instructions:'Renew through WY BoP online portal.' },
+  { state:'Wyoming', licenseType:'Pharmacy Technician', renewalFrequency:'Annual', renewalWindow:'By 10/31', ceRequirement:'PTCB required', fee:'~$80', boardWebsite:'https://pharmacyboard.wyo.gov', boardPhone:'(307) 634-9636', instructions:'Renew via WY BoP.' },
+  { state:'Wyoming', licenseType:'Pharmacy / Business', renewalFrequency:'Annual', renewalWindow:'By 10/31', ceRequirement:'N/A', fee:'~$500', boardWebsite:'https://pharmacyboard.wyo.gov', boardPhone:'(307) 634-9636', instructions:'Pharmacy renewals via WY BoP.' },
 
   // DEA (FEDERAL)
   { state:'Federal (DEA)', licenseType:'DEA', renewalFrequency:'Every 3 years', renewalWindow:'~60 days before expiration', ceRequirement:'MATE Act training: 8 hours on substance use disorder treatment (one-time attestation at renewal)', fee:'$888 (practitioner)', boardWebsite:'https://www.deadiversion.usdoj.gov', boardPhone:'(800) 882-9539', instructions:'Renew online at DEA Diversion Control Division site. MATE attestation required.' },
