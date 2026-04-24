@@ -1165,25 +1165,22 @@
             <input type="text" id="lic_password" placeholder="Login password">
           </div>
           <div class="form-group full-width">
-            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:4px">
-              <label style="margin:0">Internal Notes for This License <span style="font-weight:400;color:var(--gray-400);font-size:12px">(pharmacy-specific quirks — login belongs to, which employee handles it, gotchas)</span></label>
+            <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:4px">
+              <label style="margin:0">Internal Notes for This License</label>
               <button type="button" class="btn btn-sm btn-secondary" onclick="viewStateRenewalInstructions()" style="font-size:12px;white-space:nowrap">📖 View State Renewal Instructions</button>
             </div>
+            <div style="font-weight:400;color:var(--gray-400);font-size:12px;margin-bottom:6px">Pharmacy-specific quirks — login belongs to, which employee handles it, gotchas.</div>
             <textarea id="lic_renewalInstructions" placeholder="e.g. Katie uses her personal login for this board. Renewal emails go to Jenn. Must print and mail a copy after online submission." style="min-height:120px"></textarea>
           </div>
           <div class="form-group full-width">
             <label>Renewal Documents <span style="font-weight:400;color:var(--gray-400)">(past applications, filled forms, supporting docs)</span></label>
             <div id="lic_renewalDocsPreview" style="margin-bottom:8px"></div>
-            <div style="display:flex;gap:8px;align-items:end">
-              <div style="flex:1">
-                <input type="file" id="lic_renewalDocFile" accept=".pdf,.png,.jpg,.jpeg,.doc,.docx,.xlsx,.xls" multiple>
-                <small style="color:var(--gray-400)">Upload applications, forms, or supporting documents for this license</small>
-              </div>
-              <div style="flex:1">
-                <input type="text" id="lic_renewalDocNotes" placeholder="Label (e.g. 2024 Renewal Application, DEA Form 224)">
-              </div>
-              <button type="button" class="btn btn-sm btn-primary" onclick="addRenewalDoc()">Add</button>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:nowrap">
+              <input type="file" id="lic_renewalDocFile" accept=".pdf,.png,.jpg,.jpeg,.doc,.docx,.xlsx,.xls" multiple style="flex:0 0 auto">
+              <input type="text" id="lic_renewalDocNotes" placeholder="Label (e.g. 2024 Renewal Application, DEA Form 224)" style="flex:1;min-width:180px">
+              <button type="button" class="btn btn-sm btn-primary" onclick="addRenewalDoc()" style="flex:0 0 auto">Add</button>
             </div>
+            <small style="color:var(--gray-400);display:block;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Upload applications, forms, or supporting documents for this license.</small>
           </div>
           <div class="form-group full-width">
             <label>Requirements <span style="font-weight:400;color:var(--gray-400)">(renewal, prerequisites, compliance, documents)</span></label>
