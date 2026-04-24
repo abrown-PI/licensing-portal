@@ -876,6 +876,17 @@
   </div>
 </div>
 
+<!-- VIEW STATE RENEWAL INSTRUCTIONS MODAL (read-only, from license form) -->
+<div class="modal-overlay" id="stateRenewalViewModal">
+  <div class="modal" style="max-width:640px">
+    <div class="modal-header">
+      <h2 id="stateRenewalViewTitle">State Renewal Instructions</h2>
+      <button class="modal-close" onclick="closeModal('stateRenewalViewModal')">&times;</button>
+    </div>
+    <div class="modal-body" id="stateRenewalViewBody"></div>
+  </div>
+</div>
+
 <!-- ADD/EDIT RENEWAL REQUIREMENT MODAL -->
 <div class="modal-overlay" id="renewalFormModal">
   <div class="modal" style="max-width:720px">
@@ -1149,8 +1160,11 @@
             <input type="text" id="lic_password" placeholder="Login password">
           </div>
           <div class="form-group full-width">
-            <label>Renewal Instructions</label>
-            <textarea id="lic_renewalInstructions" placeholder="Step-by-step instructions for renewing this license..." style="min-height:120px"></textarea>
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:4px">
+              <label style="margin:0">Internal Notes for This License <span style="font-weight:400;color:var(--gray-400);font-size:12px">(pharmacy-specific quirks — login belongs to, which employee handles it, gotchas)</span></label>
+              <button type="button" class="btn btn-sm btn-secondary" onclick="viewStateRenewalInstructions()" style="font-size:12px;white-space:nowrap">📖 View State Renewal Instructions</button>
+            </div>
+            <textarea id="lic_renewalInstructions" placeholder="e.g. Katie uses her personal login for this board. Renewal emails go to Jenn. Must print and mail a copy after online submission." style="min-height:120px"></textarea>
           </div>
           <div class="form-group full-width">
             <label>Renewal Documents <span style="font-weight:400;color:var(--gray-400)">(past applications, filled forms, supporting docs)</span></label>
@@ -3219,9 +3233,9 @@ function openLicenseDetail(id) {
     html += '</div>';
   }
 
-  // Renewal Instructions
+  // Internal Notes for This License
   if (l.renewalInstructions) {
-    html += `<div class="detail-section"><h3>Renewal Instructions</h3><div style="font-size:14px;color:var(--gray-700);white-space:pre-wrap;background:var(--gray-50);padding:16px;border-radius:var(--radius);border:1px solid var(--gray-200);line-height:1.7">${escHtml(l.renewalInstructions)}</div></div>`;
+    html += `<div class="detail-section"><h3>Internal Notes for This License</h3><div style="font-size:14px;color:var(--gray-700);white-space:pre-wrap;background:var(--gray-50);padding:16px;border-radius:var(--radius);border:1px solid var(--gray-200);line-height:1.7">${escHtml(l.renewalInstructions)}</div></div>`;
   }
 
   // Renewal Documents (past applications, forms, etc.)
@@ -4437,6 +4451,81 @@ function renderAuditLog() {
 
   document.getElementById('auditTableBody').innerHTML = html;
   document.getElementById('auditEmpty').style.display = filtered.length ? 'none' : 'block';
+}
+
+// Map internal license.type to Renewal Requirements licenseType
+function licenseTypeToRenewalType(t) {
+  if (!t) return '';
+  if (t === 'Pharmacist') return 'Pharmacist';
+  if (t === 'Technician') return 'Pharmacy Technician';
+  if (t === 'Pharmacy' || t === 'Business') return 'Pharmacy / Business';
+  if (t === 'DEA') return 'DEA';
+  if (t === 'Controlled Substance') return 'Controlled Substance';
+  return 'Other';
+}
+
+// Resolve the license state (e.g. "Kentucky - Pharmacist" or "Mississippi" → "Kentucky")
+function resolveLicenseStateName(l) {
+  const raw = (l.licenseState || l.state || '').trim();
+  if (!raw) return '';
+  // If state string is like "Kentucky - Pharmacist", trim after the first " - "
+  const i = raw.indexOf(' - ');
+  return i > 0 ? raw.substring(0, i).trim() : raw;
+}
+
+function viewStateRenewalInstructions() {
+  const editId = document.getElementById('lic_editId').value;
+  const formState = (document.getElementById('lic_licenseState').value || document.getElementById('lic_state').value || '').trim();
+  const formType = document.getElementById('lic_type').value;
+  let stateName = formState;
+  // If state looks like "Kentucky - Pharmacist", trim
+  const dashIdx = stateName.indexOf(' - ');
+  if (dashIdx > 0) stateName = stateName.substring(0, dashIdx).trim();
+  const renewalType = licenseTypeToRenewalType(formType);
+
+  const body = document.getElementById('stateRenewalViewBody');
+  const title = document.getElementById('stateRenewalViewTitle');
+
+  if (!stateName || !renewalType) {
+    title.textContent = 'State Renewal Instructions';
+    body.innerHTML = '<p style="color:var(--gray-500)">Set the state and license type on the form first, then click this button to see renewal instructions.</p>';
+    openModal('stateRenewalViewModal');
+    return;
+  }
+
+  // Look up matching renewal entry
+  const match = renewalReqs.find(r =>
+    (r.state || '').toLowerCase() === stateName.toLowerCase() &&
+    (r.licenseType || '').toLowerCase() === renewalType.toLowerCase()
+  );
+
+  title.textContent = stateName + ' — ' + renewalType;
+
+  if (!match) {
+    body.innerHTML = `<div style="padding:16px;background:var(--gray-50);border-radius:var(--radius);border:1px solid var(--gray-200)">
+      <p style="margin:0 0 12px"><strong>No renewal entry yet for ${escHtml(stateName)} — ${escHtml(renewalType)}.</strong></p>
+      <p style="font-size:13px;color:var(--gray-600);margin:0 0 16px">Add one on the Renewal Requirements page so everyone has the instructions next time this comes up.</p>
+      ${canEdit() ? `<button class="btn btn-primary btn-sm" onclick="closeModal('stateRenewalViewModal'); closeModal('licenseFormModal'); document.querySelector('[data-page=&quot;renewals&quot;]').click(); setTimeout(() => openAddRenewal(), 300);">+ Add Renewal Entry</button>` : ''}
+    </div>`;
+    openModal('stateRenewalViewModal');
+    return;
+  }
+
+  const website = match.boardWebsite ? `<a href="${escHtml(match.boardWebsite.startsWith('http') ? match.boardWebsite : 'https://' + match.boardWebsite)}" target="_blank" rel="noopener">${escHtml(match.boardWebsite)}</a>` : '';
+  body.innerHTML = `
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px 20px;font-size:13px;margin-bottom:16px">
+      ${match.renewalFrequency ? `<div><strong style="color:var(--gray-500)">Frequency:</strong> ${escHtml(match.renewalFrequency)}</div>` : ''}
+      ${match.renewalWindow ? `<div><strong style="color:var(--gray-500)">Window:</strong> ${escHtml(match.renewalWindow)}</div>` : ''}
+      ${match.fee ? `<div><strong style="color:var(--gray-500)">Fee:</strong> ${escHtml(match.fee)}</div>` : ''}
+      ${match.boardPhone ? `<div><strong style="color:var(--gray-500)">Phone:</strong> ${escHtml(match.boardPhone)}</div>` : ''}
+      ${website ? `<div style="grid-column:1 / -1"><strong style="color:var(--gray-500)">Board:</strong> ${website}</div>` : ''}
+    </div>
+    ${match.ceRequirement ? `<div style="margin-bottom:14px"><h3 style="font-size:13px;margin:0 0 6px;color:var(--gray-600)">CE / Education</h3><div style="font-size:14px;white-space:pre-wrap">${escHtml(match.ceRequirement)}</div></div>` : ''}
+    ${match.instructions ? `<div style="margin-bottom:14px"><h3 style="font-size:13px;margin:0 0 6px;color:var(--gray-600)">Renewal Instructions</h3><div style="font-size:14px;white-space:pre-wrap;background:var(--gray-50);padding:14px;border-radius:var(--radius);border:1px solid var(--gray-200);line-height:1.6">${escHtml(match.instructions)}</div></div>` : ''}
+    ${match.lastUpdated ? `<div style="font-size:11px;color:var(--gray-400);margin-top:8px">Last verified ${formatDate(match.lastUpdated)}</div>` : ''}
+    <div style="font-size:12px;color:var(--gray-500);margin-top:12px;padding-top:10px;border-top:1px solid var(--gray-200)">These are general state-wide instructions. Check the "Internal Notes for This License" on the form for any pharmacy-specific quirks.</div>
+  `;
+  openModal('stateRenewalViewModal');
 }
 
 // ===== RENEWAL REQUIREMENTS =====
