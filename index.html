@@ -480,10 +480,9 @@
                 <th>Name</th>
                 <th>Role</th>
                 <th>Location(s)</th>
-                <th>Licenses</th>
                 <th>Next Expiring</th>
                 <th>Status</th>
-                <th>Actions</th>
+                <th>Licenses</th>
               </tr>
             </thead>
             <tbody id="personnelTableBody"></tbody>
@@ -3617,24 +3616,21 @@ function renderPersonnelTable() {
     const nextExp = p.licenses.filter(l => l.expirationDate && daysUntilExp(l.expirationDate) >= 0)
       .sort((a,b) => new Date(a.expirationDate) - new Date(b.expirationDate))[0];
     const days = nextExp ? daysUntilExp(nextExp.expirationDate) : 999;
-    const licLinks = p.licenses.map(l => '<div style="margin-bottom:2px"><span style="cursor:pointer;color:var(--primary);font-size:12px" onclick="clickLicense(\''+l.id+'\')">' + escHtml(l.state) + '</span></div>').join('');
 
-    // Per-license action stack: edit on top, view + upload below
+    // Per-license action stack: license name (opens edit) on top, view + upload below
     const actionStacks = p.licenses.map(l => {
       const canEditThis = canEdit() || canEditLocation(l.location);
       const hasFile = l.licenseCopyUrl || l.licenseCopy;
-      const short = escHtml(l.state.substring(0, 14));
-      let stack = '<div style="display:flex;flex-direction:column;gap:3px;padding:3px 0">';
-      if (canEditThis) {
-        stack += '<button class="btn btn-sm btn-secondary" style="font-size:10px;padding:3px 6px" onclick="clickLicense(\''+l.id+'\')">Edit '+short+'</button>';
-      }
+      const short = escHtml(l.state.substring(0, 18));
+      let stack = '<div style="display:flex;flex-direction:column;gap:3px;padding:3px 0;min-width:140px">';
+      stack += '<button class="btn btn-sm btn-secondary" style="font-size:11px;padding:4px 8px;white-space:nowrap" onclick="clickLicense(\''+l.id+'\')">'+short+'</button>';
       const lowerBtns = [];
       if (hasFile) {
-        lowerBtns.push('<button class="btn btn-sm btn-success" style="font-size:10px;padding:3px 6px;flex:1" onclick="viewLicenseDocument(\''+l.id+'\')" title="View '+short+' copy">View</button>');
+        lowerBtns.push('<button class="btn btn-sm btn-success" style="font-size:10px;padding:3px 6px;flex:1;white-space:nowrap" onclick="viewLicenseDocument(\''+l.id+'\')" title="View '+short+' copy">View</button>');
       }
       if (canEditThis) {
-        lowerBtns.push('<label class="btn btn-sm btn-'+(hasFile ? 'secondary' : 'primary')+'" style="font-size:10px;cursor:pointer;padding:3px 6px;flex:1" title="Upload '+short+' copy">'
-          + (hasFile ? 'Replace &#10003;' : 'Upload &#8593;')
+        lowerBtns.push('<label class="btn btn-sm btn-'+(hasFile ? 'secondary' : 'primary')+'" style="font-size:10px;cursor:pointer;padding:3px 6px;flex:1;white-space:nowrap" title="Upload '+short+' copy">'
+          + (hasFile ? 'Replace' : 'Upload Copy')
           + '<input type="file" accept=".pdf,.png,.jpg,.jpeg,.doc,.docx" style="display:none" onchange="quickUploadLicenseCopy(\''+l.id+'\', this)">'
           + '</label>');
       }
@@ -3647,14 +3643,13 @@ function renderPersonnelTable() {
       <td><strong>${p.name}</strong></td>
       <td>${p.role}</td>
       <td>${[...p.locations].join(', ')}</td>
-      <td style="min-width:220px">${licLinks}</td>
       <td>${nextExp ? formatDate(nextExp.expirationDate) : 'N/A'}</td>
       <td>${urgencyBadge(days, nextExp ? nextExp.expirationDate : '')}</td>
-      <td><div style="display:flex;flex-wrap:wrap;gap:6px">${actionStacks}</div></td>
+      <td><div style="display:flex;flex-wrap:wrap;gap:8px">${actionStacks}</div></td>
     </tr>`;
   }).join('');
 
-  document.getElementById('personnelTableBody').innerHTML = html || '<tr><td colspan="7" class="empty-state">No personnel found</td></tr>';
+  document.getElementById('personnelTableBody').innerHTML = html || '<tr><td colspan="6" class="empty-state">No personnel found</td></tr>';
 }
 
 // ===== INSPECTIONS =====
