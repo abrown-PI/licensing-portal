@@ -4458,6 +4458,30 @@ function renderAuditLog() {
   document.getElementById('auditEmpty').style.display = filtered.length ? 'none' : 'block';
 }
 
+const STATE_ABBR_TO_NAME = {
+  AL:'Alabama', AK:'Alaska', AZ:'Arizona', AR:'Arkansas', CA:'California',
+  CO:'Colorado', CT:'Connecticut', DE:'Delaware', DC:'District of Columbia',
+  FL:'Florida', GA:'Georgia', HI:'Hawaii', ID:'Idaho', IL:'Illinois',
+  IN:'Indiana', IA:'Iowa', KS:'Kansas', KY:'Kentucky', LA:'Louisiana',
+  ME:'Maine', MD:'Maryland', MA:'Massachusetts', MI:'Michigan', MN:'Minnesota',
+  MS:'Mississippi', MO:'Missouri', MT:'Montana', NE:'Nebraska', NV:'Nevada',
+  NH:'New Hampshire', NJ:'New Jersey', NM:'New Mexico', NY:'New York',
+  NC:'North Carolina', ND:'North Dakota', OH:'Ohio', OK:'Oklahoma',
+  OR:'Oregon', PA:'Pennsylvania', PR:'Puerto Rico', RI:'Rhode Island',
+  SC:'South Carolina', SD:'South Dakota', TN:'Tennessee', TX:'Texas',
+  UT:'Utah', VT:'Vermont', VA:'Virginia', WA:'Washington', WV:'West Virginia',
+  WI:'Wisconsin', WY:'Wyoming'
+};
+
+function normalizeStateName(s) {
+  if (!s) return '';
+  const trimmed = s.trim();
+  // Already a full name
+  if (trimmed.length > 2) return trimmed;
+  const upper = trimmed.toUpperCase();
+  return STATE_ABBR_TO_NAME[upper] || trimmed;
+}
+
 // Map internal license.type to Renewal Requirements licenseType
 function licenseTypeToRenewalType(t) {
   if (!t) return '';
@@ -4486,6 +4510,8 @@ function viewStateRenewalInstructions() {
   // If state looks like "Kentucky - Pharmacist", trim
   const dashIdx = stateName.indexOf(' - ');
   if (dashIdx > 0) stateName = stateName.substring(0, dashIdx).trim();
+  // Expand 2-letter codes like "AZ" to "Arizona" to match Renewal Requirements entries
+  stateName = normalizeStateName(stateName);
   const renewalType = licenseTypeToRenewalType(formType);
 
   const body = document.getElementById('stateRenewalViewBody');
