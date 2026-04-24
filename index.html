@@ -375,7 +375,7 @@
   <!-- LOCATIONS PAGE -->
   <div class="page" id="page-locations">
     <div style="display:flex;justify-content:flex-end;margin-bottom:12px">
-      <button class="btn btn-sm btn-primary admin-edit-btn" onclick="openAddLocation()">+ Add Location</button>
+      <button class="btn btn-sm btn-primary admin-only-btn" onclick="openAddLocation()">+ Add Location</button>
     </div>
     <div class="locations-grid" id="locationsGrid"></div>
   </div>
@@ -1244,7 +1244,7 @@
     <div class="modal-header">
       <h2 id="locDetailTitle">Location Details</h2>
       <div style="display:flex;gap:8px;align-items:center">
-        <button class="btn btn-sm btn-secondary admin-edit-btn" id="editLocBtn" onclick="editLocationFromDetail()">Edit Location</button>
+        <button class="btn btn-sm btn-secondary admin-only-btn" id="editLocBtn" onclick="editLocationFromDetail()">Edit Location</button>
         <button class="modal-close" onclick="closeModal('locationDetailModal')">&times;</button>
       </div>
     </div>
@@ -3253,8 +3253,13 @@ async function deleteLicense() {
 async function saveLicense(e) {
   e.preventDefault();
   const editId = document.getElementById('lic_editId').value;
+  const chosenLoc = document.getElementById('lic_location').value;
+  if (!canEdit() && !canEditLocation(chosenLoc)) {
+    showToast('You can only add/edit licenses for your assigned locations', 'error');
+    return;
+  }
   const data = {
-    location: document.getElementById('lic_location').value,
+    location: chosenLoc,
     state: document.getElementById('lic_state').value,
     licenseState: document.getElementById('lic_licenseState').value,
     licenseNumber: document.getElementById('lic_number').value,
@@ -3404,17 +3409,17 @@ function renderPersonnelTable() {
       return '<button class="btn btn-sm btn-success" style="font-size:10px;margin:2px;padding:2px 6px" onclick="viewLicenseDocument(\''+l.id+'\')">'
         + escHtml(l.state.substring(0,12)) + '</button>';
     }).join('');
-    const uploadBtns = canEdit() ? p.licenses.map(l => {
+    const uploadBtns = p.licenses.filter(l => canEdit() || canEditLocation(l.location)).map(l => {
       const hasFile = l.licenseCopyUrl || l.licenseCopy;
       return '<label class="btn btn-sm btn-'+(hasFile ? 'secondary' : 'primary')+'" style="font-size:10px;cursor:pointer;margin:2px;padding:2px 6px">'
         + escHtml(l.state.substring(0,12)) + ' ' + (hasFile ? '&#10003;' : '&#8593;')
         + '<input type="file" accept=".pdf,.png,.jpg,.jpeg,.doc,.docx" style="display:none" onchange="quickUploadLicenseCopy(\''+l.id+'\', this)">'
         + '</label>';
-    }).join('') : '';
-    const editBtns = canEdit() ? p.licenses.map(l => {
+    }).join('');
+    const editBtns = p.licenses.filter(l => canEdit() || canEditLocation(l.location)).map(l => {
       return '<button class="btn btn-sm btn-secondary" style="font-size:10px;margin:2px;padding:2px 6px" onclick="clickLicense(\''+l.id+'\')">'
         + 'Edit ' + escHtml(l.state.substring(0,12)) + '</button>';
-    }).join('') : '';
+    }).join('');
     return `<tr>
       <td><strong>${p.name}</strong></td>
       <td>${p.role}</td>
@@ -3461,8 +3466,13 @@ function openEditInspection(id) {
 async function saveInspection(e) {
   e.preventDefault();
   const editId = document.getElementById('insp_editId').value;
+  const chosenLoc = document.getElementById('insp_location').value;
+  if (!canEdit() && !canEditLocation(chosenLoc)) {
+    showToast('You can only add/edit inspections for your assigned locations', 'error');
+    return;
+  }
   const data = {
-    location: document.getElementById('insp_location').value,
+    location: chosenLoc,
     type: document.getElementById('insp_type').value,
     date: document.getElementById('insp_date').value,
     result: document.getElementById('insp_result').value,
@@ -3533,7 +3543,7 @@ function renderInspections() {
         </div>
         <div style="display:flex;align-items:center;gap:8px">
           <span class="insp-result insp-${i.result.toLowerCase()}">${i.result}</span>
-          ${canEdit() ? '<button class="btn btn-sm btn-secondary" style="font-size:11px" onclick="openEditInspection(\''+i.id+'\')">Edit</button>' : ''}
+          ${(canEdit() || canEditLocation(i.location)) ? '<button class="btn btn-sm btn-secondary" style="font-size:11px" onclick="openEditInspection(\''+i.id+'\')">Edit</button>' : ''}
         </div>
       </div>
       ${i.relatedLicense ? '<div style="font-size:13px;margin-bottom:4px">Related License: <strong>'+i.relatedLicense+'</strong></div>' : ''}
@@ -3666,10 +3676,15 @@ function populateLocationFilters() {
   });
 }
 
+function assignableLocations() {
+  if (userRole === ROLES.LOCATION_MANAGER) return userLocations.slice();
+  return LOCATIONS.slice();
+}
+
 function populateLicLocationSelect() {
   const sel = document.getElementById('lic_location');
   sel.innerHTML = '';
-  LOCATIONS.forEach(loc => {
+  assignableLocations().forEach(loc => {
     const opt = document.createElement('option');
     opt.value = loc; opt.textContent = loc;
     sel.appendChild(opt);
@@ -3679,7 +3694,7 @@ function populateLicLocationSelect() {
 function populateInspLocationSelect() {
   const sel = document.getElementById('insp_location');
   sel.innerHTML = '';
-  LOCATIONS.forEach(loc => {
+  assignableLocations().forEach(loc => {
     const opt = document.createElement('option');
     opt.value = loc; opt.textContent = loc;
     sel.appendChild(opt);
@@ -3930,6 +3945,7 @@ async function resolveUserRole() {
 }
 
 function canEdit() { return userRole === ROLES.ADMIN; }
+function canEditAny() { return userRole === ROLES.ADMIN || (userRole === ROLES.LOCATION_MANAGER && userLocations.length > 0); }
 function canEditLocation(loc) { return userRole === ROLES.ADMIN || (userRole === ROLES.LOCATION_MANAGER && userLocations.includes(loc)); }
 function canUpload(loc) { return userRole === ROLES.ADMIN || (userRole === ROLES.LOCATION_MANAGER && userLocations.includes(loc)); }
 function canViewCredentials() { return userRole === ROLES.ADMIN; }
@@ -3949,6 +3965,9 @@ function applyRoleUI() {
 
   // Show/hide add buttons based on role
   document.querySelectorAll('.admin-edit-btn').forEach(el => {
+    el.style.display = canEditAny() ? '' : 'none';
+  });
+  document.querySelectorAll('.admin-only-btn').forEach(el => {
     el.style.display = canEdit() ? '' : 'none';
   });
 
