@@ -481,7 +481,7 @@
                 <th>Role</th>
                 <th>Location(s)</th>
                 <th>Next Expiring</th>
-                <th>Days to Next Expiring</th>
+                <th>Renewal Status</th>
                 <th>Licenses</th>
               </tr>
             </thead>
@@ -3635,10 +3635,55 @@ function renderPersonnelTable() {
   if (locFilter) personnel = personnel.filter(p => p.locations.has(locFilter));
   personnel.sort((a, b) => a.name.localeCompare(b.name));
 
+  // Rank renewal statuses by urgency (worst first)
+  const RENEWAL_STATUS_RANK = {
+    'LAPSED': 0,
+    'NEEDS DONE ASAP': 1,
+    'NEED INFO': 2,
+    'SUBMITTED-WAITING': 3,
+    'NEEDS DONE NEXT 3 MONTHS': 4,
+    '': 5, // blank = current
+    'CURRENT': 5
+  };
+  const RENEWAL_STATUS_LABEL = {
+    'LAPSED': 'Lapsed',
+    'NEEDS DONE ASAP': 'Needs Done ASAP',
+    'NEED INFO': 'Need Info',
+    'SUBMITTED-WAITING': 'Submitted - Waiting',
+    'NEEDS DONE NEXT 3 MONTHS': 'Needs Done Next 3 Months',
+    '': 'Current',
+    'CURRENT': 'Current'
+  };
+  const RENEWAL_STATUS_BADGE = {
+    'LAPSED': 'badge-expired',
+    'NEEDS DONE ASAP': 'badge-urgent',
+    'NEED INFO': 'badge-warning',
+    'SUBMITTED-WAITING': 'badge-soon',
+    'NEEDS DONE NEXT 3 MONTHS': 'badge-soon',
+    '': 'badge-ok',
+    'CURRENT': 'badge-ok'
+  };
+
   const html = personnel.map(p => {
     const nextExp = p.licenses.filter(l => l.expirationDate && daysUntilExp(l.expirationDate) >= 0)
       .sort((a,b) => new Date(a.expirationDate) - new Date(b.expirationDate))[0];
     const days = nextExp ? daysUntilExp(nextExp.expirationDate) : 999;
+
+    // Most urgent renewal status across this person's active licenses
+    let worstStatusKey = 'CURRENT';
+    let worstRank = RENEWAL_STATUS_RANK['CURRENT'];
+    p.licenses.forEach(l => {
+      const key = (l.renewalStatus || '').toUpperCase();
+      const rank = RENEWAL_STATUS_RANK[key] != null ? RENEWAL_STATUS_RANK[key] : 5;
+      if (rank < worstRank) { worstRank = rank; worstStatusKey = key; }
+    });
+    const statusLabel = RENEWAL_STATUS_LABEL[worstStatusKey] || 'Current';
+    const statusClass = RENEWAL_STATUS_BADGE[worstStatusKey] || 'badge-ok';
+
+    // Combined "Next Expiring" cell: date + colored days-left badge
+    const nextExpCell = nextExp
+      ? formatDate(nextExp.expirationDate) + ' <div style="margin-top:3px">' + urgencyBadge(days, nextExp.expirationDate) + '</div>'
+      : '<span style="color:var(--gray-400)">N/A</span>';
 
     // Per-license action stack: license name (opens edit) on top, view + upload below
     const actionStacks = p.licenses.map(l => {
@@ -3667,8 +3712,8 @@ function renderPersonnelTable() {
       <td style="min-width:160px;white-space:nowrap"><strong>${p.name}</strong></td>
       <td>${p.role}</td>
       <td>${[...p.locations].join(', ')}</td>
-      <td>${nextExp ? formatDate(nextExp.expirationDate) : 'N/A'}</td>
-      <td>${urgencyBadge(days, nextExp ? nextExp.expirationDate : '')}</td>
+      <td>${nextExpCell}</td>
+      <td><span class="badge ${statusClass}">${escHtml(statusLabel)}</span></td>
       <td><div style="display:flex;flex-wrap:wrap;gap:8px">${actionStacks}</div></td>
     </tr>`;
   }).join('');
