@@ -405,6 +405,7 @@
             <option value="">All Types</option>
             <option value="Pharmacy" style="background:#dbeafe;color:#1e40af">Pharmacy</option>
             <option value="Pharmacist" style="background:#ede9fe;color:#7c3aed">Pharmacist</option>
+            <option value="Pharmacy Intern" style="background:#cffafe;color:#0e7490">Pharmacy Intern</option>
             <option value="DEA" style="background:#fef3c7;color:#92400e">DEA</option>
             <option value="Controlled Substance" style="background:#fce7f3;color:#be185d">Controlled Substance</option>
             <option value="Sterile Compounding" style="background:#ccfbf1;color:#0f766e">Sterile Compounding</option>
@@ -412,6 +413,7 @@
             <option value="Hemp" style="background:#ecfccb;color:#3f6212">Hemp</option>
             <option value="Pseudoephedrine" style="background:#fef9c3;color:#854d0e">Pseudoephedrine (PSE)</option>
             <option value="Technician" style="background:#fdf2f8;color:#9d174d">Technician</option>
+            <option value="Technician in Training" style="background:#ffedd5;color:#9a3412">Technician in Training</option>
             <option value="Certificate" style="background:#e0f2fe;color:#0369a1">Certificate</option>
             <option value="Medicaid" style="background:#f0fdf4;color:#166534">Medicaid</option>
             <option value="Business" style="background:#faf5ff;color:#6b21a8">Business</option>
@@ -483,7 +485,9 @@
           <select class="filter-select" id="personnelRoleFilter" onchange="renderPersonnelTable()">
             <option value="">All Roles</option>
             <option value="Pharmacist">Pharmacist</option>
+            <option value="Pharmacy Intern">Pharmacy Intern</option>
             <option value="Technician">Technician</option>
+            <option value="Technician in Training">Technician in Training</option>
             <option value="Certificate Holder">Certificate Holder</option>
           </select>
           <select class="filter-select" id="personnelStatusFilter" onchange="renderPersonnelTable()">
@@ -498,7 +502,9 @@
           <select class="filter-select" id="personnelTypeFilter" onchange="renderPersonnelTable()">
             <option value="">All License Types</option>
             <option value="Pharmacist">Pharmacist</option>
+            <option value="Pharmacy Intern">Pharmacy Intern</option>
             <option value="Technician">Technician</option>
+            <option value="Technician in Training">Technician in Training</option>
             <option value="Certificate">Certificate</option>
             <option value="Pharmacy">Pharmacy</option>
             <option value="DEA">DEA</option>
@@ -1189,6 +1195,7 @@
             <select id="lic_type" style="font-weight:500">
               <option value="Pharmacy" style="background:#dbeafe;color:#1e40af">Pharmacy</option>
               <option value="Pharmacist" style="background:#ede9fe;color:#7c3aed">Pharmacist</option>
+              <option value="Pharmacy Intern" style="background:#cffafe;color:#0e7490">Pharmacy Intern</option>
               <option value="DEA" style="background:#fef3c7;color:#92400e">DEA</option>
               <option value="Controlled Substance" style="background:#fce7f3;color:#be185d">Controlled Substance</option>
               <option value="Sterile Compounding" style="background:#ccfbf1;color:#0f766e">Sterile Compounding</option>
@@ -1196,6 +1203,7 @@
               <option value="Hemp" style="background:#ecfccb;color:#3f6212">Hemp</option>
               <option value="Pseudoephedrine" style="background:#fef9c3;color:#854d0e">Pseudoephedrine (PSE)</option>
               <option value="Technician" style="background:#fdf2f8;color:#9d174d">Technician</option>
+              <option value="Technician in Training" style="background:#ffedd5;color:#9a3412">Technician in Training</option>
               <option value="Certificate" style="background:#e0f2fe;color:#0369a1">Certificate</option>
               <option value="Medicaid" style="background:#f0fdf4;color:#166534">Medicaid</option>
               <option value="Business" style="background:#faf5ff;color:#6b21a8">Business</option>
@@ -3798,8 +3806,13 @@ function renderPersonnelTable() {
     }
     personnelMap[key].licenses.push(l);
     personnelMap[key].locations.add(l.location);
-    if (l.type === 'Technician') personnelMap[key].role = 'Technician';
-    if (l.type === 'Certificate' && personnelMap[key].role !== 'Pharmacist' && personnelMap[key].role !== 'Technician') personnelMap[key].role = 'Certificate Holder';
+    // Role precedence (highest first): Pharmacist > Pharmacy Intern > Technician > Technician in Training > Certificate Holder
+    const role = personnelMap[key].role;
+    if (l.type === 'Pharmacist') personnelMap[key].role = 'Pharmacist';
+    else if (l.type === 'Pharmacy Intern' && role !== 'Pharmacist') personnelMap[key].role = 'Pharmacy Intern';
+    else if (l.type === 'Technician' && role !== 'Pharmacist' && role !== 'Pharmacy Intern') personnelMap[key].role = 'Technician';
+    else if (l.type === 'Technician in Training' && !['Pharmacist','Pharmacy Intern','Technician'].includes(role)) personnelMap[key].role = 'Technician in Training';
+    else if (l.type === 'Certificate' && !['Pharmacist','Pharmacy Intern','Technician','Technician in Training'].includes(role)) personnelMap[key].role = 'Certificate Holder';
   });
 
   let personnel = Object.values(personnelMap);
