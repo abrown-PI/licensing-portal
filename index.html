@@ -1506,7 +1506,7 @@ const MSAL_CONFIG = {
 const ADMIN_PREFIXES = ['abrown', 'jbarlekoff'];
 const ALLOWED_DOMAINS = ['pharmacyinnovations.net','pharmacyinnovationsnet.com','pharmacyinnovationsnet.onmicrosoft.com','communitypharmacy.com'];
 
-// Roles: admin = full access, office_staff = view all + download, location_manager = view all + edit/upload assigned locations, viewer = view assigned only
+// Roles: admin = full access, office_staff = view all + download, location_manager = sees all location cards + edit/upload assigned locations only, viewer = view assigned only
 const ROLES = { ADMIN: 'admin', OFFICE_STAFF: 'office_staff', LOCATION_MANAGER: 'location_manager', VIEWER: 'viewer' };
 
 const SP_SITE_URL = 'https://pharmacyinnovationsnet.sharepoint.com/sites/Pixe';
@@ -2992,7 +2992,7 @@ function filterAndNav(urgency, location) {
 
 // ===== LOCATIONS GRID =====
 function renderLocationsGrid() {
-  const visibleLocations = LOCATIONS.filter(loc => canViewLocation(loc));
+  const visibleLocations = LOCATIONS.filter(loc => canViewLocationCard(loc));
   const html = visibleLocations.map(loc => {
     const info = LOCATION_INFO[loc] || {};
     const locLics = licenses.filter(l => l.location === loc && !l.archived);
@@ -3055,14 +3055,15 @@ function editLocationFromDetail() {
 function openLocationDetail(loc) {
   currentLocationKey = loc;
   const info = LOCATION_INFO[loc] || {};
+  const canViewLicensesHere = canViewLocation(loc);
   const canUploadHere = canUpload(loc);
   const canEditHere = canEditLocation(loc);
   document.getElementById('locDetailTitle').textContent = (info.dba || loc) + ' — ' + loc;
-  const locLics = licenses.filter(l => l.location === loc && !l.archived);
+  const locLics = canViewLicensesHere ? licenses.filter(l => l.location === loc && !l.archived) : [];
 
   let html = '<div class="sub-tabs" id="locSubTabs">';
   html += '<button class="sub-tab active" onclick="showLocTab(this,\'locOverview\')">Overview</button>';
-  html += '<button class="sub-tab" onclick="showLocTab(this,\'locLicenses\')">Licenses (' + locLics.length + ')</button>';
+  if (canViewLicensesHere) html += '<button class="sub-tab" onclick="showLocTab(this,\'locLicenses\')">Licenses (' + locLics.length + ')</button>';
   if (canViewCredentials()) html += '<button class="sub-tab" onclick="showLocTab(this,\'locCredentials\')">Credentials</button>';
   html += '</div>';
 
@@ -3092,7 +3093,8 @@ function openLocationDetail(loc) {
     html += '</div>';
   }
 
-  // Key licenses with links
+  // Key licenses with links (only if user can view licenses for this location)
+  if (canViewLicensesHere) {
   html += '<div class="card" style="margin-bottom:16px"><div class="card-header"><h2>Key Licenses</h2></div><div class="card-body">';
   const keyTypes = ['Pharmacy','DEA','Controlled Substance','Sterile Compounding','Hemp','Pseudoephedrine'];
   const keyLics = locLics.filter(l => keyTypes.includes(l.type) || l.state.match(/^(DEA|NPI|NABP)/));
@@ -3152,9 +3154,11 @@ function openLocationDetail(loc) {
     });
     html += '</tbody></table></div></div>';
   }
+  } // end canViewLicensesHere block (Key Licenses + Personnel)
   html += '</div>';
 
   // Licenses sub-tab
+  if (canViewLicensesHere) {
   html += '<div id="locLicenses" style="display:none"><table class="data-table"><thead><tr><th>Name</th><th>State</th><th>License #</th><th>Type</th><th>Expiration</th><th>Urgency</th><th>Status</th><th>License Document</th></tr></thead><tbody>';
   locLics.sort((a,b) => new Date(a.expirationDate || '2099-12-31') - new Date(b.expirationDate || '2099-12-31')).forEach(l => {
     const days = daysUntilExp(l.expirationDate);
@@ -3180,6 +3184,7 @@ function openLocationDetail(loc) {
     </tr>`;
   });
   html += '</tbody></table></div>';
+  } // end canViewLicensesHere block (Licenses sub-tab)
 
   // Credentials sub-tab
   html += '<div id="locCredentials" style="display:none">';
@@ -4490,7 +4495,8 @@ function canEditAny() { return userRole === ROLES.ADMIN || (userRole === ROLES.L
 function canEditLocation(loc) { return userRole === ROLES.ADMIN || (userRole === ROLES.LOCATION_MANAGER && userLocations.includes(loc)); }
 function canUpload(loc) { return userRole === ROLES.ADMIN || (userRole === ROLES.LOCATION_MANAGER && userLocations.includes(loc)); }
 function canViewCredentials() { return userRole === ROLES.ADMIN; }
-function canViewLocation(loc) { return userRole === ROLES.ADMIN || userRole === ROLES.OFFICE_STAFF || userRole === ROLES.LOCATION_MANAGER || (userRole === ROLES.VIEWER && userLocations.includes(loc)); }
+function canViewLocation(loc) { return userRole === ROLES.ADMIN || userRole === ROLES.OFFICE_STAFF || ((userRole === ROLES.LOCATION_MANAGER || userRole === ROLES.VIEWER) && userLocations.includes(loc)); }
+function canViewLocationCard(loc) { return userRole === ROLES.LOCATION_MANAGER || canViewLocation(loc); }
 function canManageUsers() { return userRole === ROLES.ADMIN; }
 function canManageEmployees() { return userRole === ROLES.ADMIN || userRole === ROLES.LOCATION_MANAGER; }
 function canDownload() { return true; } // all roles can download
