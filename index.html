@@ -913,6 +913,7 @@
               <option value="admin">Admin — Full access, all locations</option>
               <option value="office_staff">Office Staff — View all, download copies</option>
               <option value="location_manager">Location Manager — Manage assigned locations</option>
+              <option value="pharmacist">Pharmacist — Read-only view of all locations &amp; licenses</option>
             </select>
           </div>
           <div class="form-group full-width" id="userLocationsGroup">
@@ -1506,8 +1507,8 @@ const MSAL_CONFIG = {
 const ADMIN_PREFIXES = ['abrown', 'jbarlekoff'];
 const ALLOWED_DOMAINS = ['pharmacyinnovations.net','pharmacyinnovationsnet.com','pharmacyinnovationsnet.onmicrosoft.com','communitypharmacy.com'];
 
-// Roles: admin = full access, office_staff = view all + download, location_manager = their locations + upload/edit expirations
-const ROLES = { ADMIN: 'admin', OFFICE_STAFF: 'office_staff', LOCATION_MANAGER: 'location_manager', VIEWER: 'viewer' };
+// Roles: admin = full access, office_staff = view all + download, location_manager = their locations + upload/edit expirations, pharmacist = read-only view of all locations + licenses
+const ROLES = { ADMIN: 'admin', OFFICE_STAFF: 'office_staff', LOCATION_MANAGER: 'location_manager', PHARMACIST: 'pharmacist', VIEWER: 'viewer' };
 
 const SP_SITE_URL = 'https://pharmacyinnovationsnet.sharepoint.com/sites/Pixe';
 const SP_LIST_LICENSES = 'Licensing_Licenses';
@@ -3021,7 +3022,9 @@ function renderLocationsGrid() {
         <div style="font-size:12px;color:var(--gray-500);margin-bottom:8px;border-bottom:1px solid var(--gray-100);padding-bottom:8px">
           ${info.businessName ? '<div><strong>'+info.businessName+'</strong></div>' : ''}
           ${info.address ? '<div>'+info.address+', '+info.city+', '+info.stateAbbr+' '+info.zip+'</div>' : ''}
-          ${info.phone ? '<div>'+info.phone+'</div>' : ''}
+          ${info.phone ? '<div>Phone: '+info.phone+'</div>' : ''}
+          ${info.fax ? '<div>Fax: '+info.fax+'</div>' : ''}
+          ${info.hours ? '<div style="margin-top:4px">'+info.hours+'</div>' : ''}
         </div>
         <div style="font-size:12px;color:var(--gray-600);margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid var(--gray-100)">
           <div style="font-weight:600;margin-bottom:4px">${locLics.length} Total Licenses</div>
@@ -4456,6 +4459,9 @@ async function resolveUserRole() {
       } else if (userRecord.role === ROLES.OFFICE_STAFF) {
         isAdmin = false;
         userLocations = [...LOCATIONS]; // can view all
+      } else if (userRecord.role === ROLES.PHARMACIST) {
+        isAdmin = false;
+        userLocations = [...LOCATIONS]; // read-only view of all
       } else {
         isAdmin = false;
         // Migrate any old location names in the user's assigned locations
@@ -4488,7 +4494,7 @@ function canEditAny() { return userRole === ROLES.ADMIN || (userRole === ROLES.L
 function canEditLocation(loc) { return userRole === ROLES.ADMIN || (userRole === ROLES.LOCATION_MANAGER && userLocations.includes(loc)); }
 function canUpload(loc) { return userRole === ROLES.ADMIN || (userRole === ROLES.LOCATION_MANAGER && userLocations.includes(loc)); }
 function canViewCredentials() { return userRole === ROLES.ADMIN; }
-function canViewLocation(loc) { return userRole === ROLES.ADMIN || userRole === ROLES.OFFICE_STAFF || ((userRole === ROLES.LOCATION_MANAGER || userRole === ROLES.VIEWER) && userLocations.includes(loc)); }
+function canViewLocation(loc) { return userRole === ROLES.ADMIN || userRole === ROLES.OFFICE_STAFF || userRole === ROLES.PHARMACIST || ((userRole === ROLES.LOCATION_MANAGER || userRole === ROLES.VIEWER) && userLocations.includes(loc)); }
 function canManageUsers() { return userRole === ROLES.ADMIN; }
 function canManageEmployees() { return userRole === ROLES.ADMIN || userRole === ROLES.LOCATION_MANAGER; }
 function canDownload() { return true; } // all roles can download
@@ -4511,7 +4517,7 @@ function applyRoleUI() {
   });
 
   // Update role badge in navbar
-  const roleLabel = userRole === ROLES.ADMIN ? 'Admin' : userRole === ROLES.OFFICE_STAFF ? 'Office Staff' : userRole === ROLES.LOCATION_MANAGER ? 'Location Mgr' : userRole === ROLES.VIEWER ? 'Viewer' : 'No Role';
+  const roleLabel = userRole === ROLES.ADMIN ? 'Admin' : userRole === ROLES.OFFICE_STAFF ? 'Office Staff' : userRole === ROLES.LOCATION_MANAGER ? 'Location Mgr' : userRole === ROLES.PHARMACIST ? 'Pharmacist' : userRole === ROLES.VIEWER ? 'Viewer' : 'No Role';
   const roleEl = document.getElementById('userRoleBadge');
   if (roleEl) {
     roleEl.textContent = roleLabel;
