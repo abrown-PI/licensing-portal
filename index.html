@@ -3311,7 +3311,7 @@ function sortLicenses(field) {
 function clickLicense(id) {
   const l = licenses.find(x => String(x.id) === String(id));
   if (!l) return;
-  if (canEdit() || canEditLocation(l.location)) {
+  if (canEditLicense(l)) {
     openEditLicense(id);
   } else {
     openLicenseDetail(id);
@@ -3509,6 +3509,8 @@ function openAddLicense() {
   document.getElementById('lic_requirementsPreview').innerHTML = '';
   document.getElementById('licFormDangerBtns').style.display = 'none';
   document.getElementById('licBoardCreds').style.display = canEdit() ? 'block' : 'none';
+  document.getElementById('lic_location').disabled = false;
+  document.getElementById('lic_holder').disabled = false;
   populateLicLocationSelect();
   openModal('licenseFormModal');
 }
@@ -3554,6 +3556,9 @@ function openEditLicense(id) {
   document.getElementById('lic_file').value = '';
   document.getElementById('licFormDangerBtns').style.display = canEdit() ? 'flex' : 'none';
   document.getElementById('licBoardCreds').style.display = canEdit() ? 'block' : 'none';
+  const ownOnly = !canEdit() && !canEditLocation(l.location) && isOwnLicense(l);
+  document.getElementById('lic_location').disabled = ownOnly;
+  document.getElementById('lic_holder').disabled = ownOnly;
   openModal('licenseFormModal');
 }
 
@@ -3607,9 +3612,13 @@ async function saveLicense(e) {
   e.preventDefault();
   const editId = document.getElementById('lic_editId').value;
   const chosenLoc = document.getElementById('lic_location').value;
+  const existingLic = editId ? licenses.find(x => String(x.id) === String(editId)) : null;
   if (!canEdit() && !canEditLocation(chosenLoc)) {
-    showToast('You can only add/edit licenses for your assigned locations', 'error');
-    return;
+    const ownEdit = existingLic && isOwnLicense(existingLic) && chosenLoc === existingLic.location;
+    if (!ownEdit) {
+      showToast('You can only edit your own license, and cannot change its location', 'error');
+      return;
+    }
   }
   // Require License Holder to be picked from the dropdown
   const holderValue = (document.getElementById('lic_holder').value || '').trim();
@@ -3888,7 +3897,7 @@ function renderPersonnelTable() {
 
     // Per-license action stack: license name (opens edit) on top, view + upload below
     const actionStacks = p.licenses.map(l => {
-      const canEditThis = canEdit() || canEditLocation(l.location);
+      const canEditThis = canEditLicense(l);
       const hasFile = l.licenseCopyUrl || l.licenseCopy;
       const label = escHtml(licDisplayName(l).substring(0, 32));
       const short = escHtml((l.licenseState || l.state || '').substring(0, 14));
@@ -4494,6 +4503,11 @@ function canEdit() { return userRole === ROLES.ADMIN; }
 function canEditAny() { return userRole === ROLES.ADMIN || (userRole === ROLES.LOCATION_MANAGER && userLocations.length > 0); }
 function canEditLocation(loc) { return userRole === ROLES.ADMIN || (userRole === ROLES.LOCATION_MANAGER && userLocations.includes(loc)); }
 function canUpload(loc) { return userRole === ROLES.ADMIN || (userRole === ROLES.LOCATION_MANAGER && userLocations.includes(loc)); }
+function isOwnLicense(l) {
+  if (!l || !l.licenseHolder || !signedInUser || !signedInUser.name) return false;
+  return l.licenseHolder.trim().toLowerCase() === signedInUser.name.trim().toLowerCase();
+}
+function canEditLicense(l) { return canEdit() || canEditLocation(l.location) || isOwnLicense(l); }
 function canViewCredentials() { return userRole === ROLES.ADMIN; }
 function canViewLocation(loc) { return userRole === ROLES.ADMIN || userRole === ROLES.OFFICE_STAFF || ((userRole === ROLES.LOCATION_MANAGER || userRole === ROLES.VIEWER) && userLocations.includes(loc)); }
 function canViewLocationCard(loc) { return userRole === ROLES.LOCATION_MANAGER || canViewLocation(loc); }
