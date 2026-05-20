@@ -387,7 +387,7 @@
     <div class="card">
       <div class="card-header">
         <h2>All Licenses</h2>
-        <button class="btn btn-sm btn-primary admin-edit-btn" onclick="openAddLicense()">+ Add License</button>
+        <button class="btn btn-sm btn-primary" onclick="openAddLicense()">+ Add License</button>
       </div>
       <div class="card-body">
         <div class="table-controls">
@@ -468,7 +468,7 @@
     <div class="card">
       <div class="card-header">
         <h2>Personnel & License Holders</h2>
-        <button class="btn btn-sm btn-primary admin-edit-btn" onclick="openAddLicense()">+ Add License</button>
+        <button class="btn btn-sm btn-primary" onclick="openAddLicense()">+ Add License</button>
       </div>
       <div class="card-body">
         <div class="table-controls" style="flex-wrap:wrap;gap:8px">
@@ -3510,8 +3510,15 @@ function openAddLicense() {
   document.getElementById('licFormDangerBtns').style.display = 'none';
   document.getElementById('licBoardCreds').style.display = canEdit() ? 'block' : 'none';
   document.getElementById('lic_location').disabled = false;
-  document.getElementById('lic_holder').disabled = false;
   populateLicLocationSelect();
+  const selfAddOnly = !canEdit() && !canEditAny();
+  if (selfAddOnly && signedInUser && signedInUser.name) {
+    document.getElementById('lic_holder').value = signedInUser.name;
+    document.getElementById('lic_holderValidated').value = signedInUser.name;
+    document.getElementById('lic_holder').disabled = true;
+  } else {
+    document.getElementById('lic_holder').disabled = false;
+  }
   openModal('licenseFormModal');
 }
 
@@ -3615,8 +3622,10 @@ async function saveLicense(e) {
   const existingLic = editId ? licenses.find(x => String(x.id) === String(editId)) : null;
   if (!canEdit() && !canEditLocation(chosenLoc)) {
     const ownEdit = existingLic && isOwnLicense(existingLic) && chosenLoc === existingLic.location;
-    if (!ownEdit) {
-      showToast('You can only edit your own license, and cannot change its location', 'error');
+    const typedHolder = (document.getElementById('lic_holder').value || '').trim().toLowerCase();
+    const ownAdd = !editId && signedInUser && signedInUser.name && typedHolder === signedInUser.name.trim().toLowerCase();
+    if (!ownEdit && !ownAdd) {
+      showToast('You can only add or edit a license for yourself', 'error');
       return;
     }
   }
