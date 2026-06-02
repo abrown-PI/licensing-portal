@@ -4237,17 +4237,39 @@ function populateDocLocationSelect() {
 }
 
 // ===== HELPERS =====
+// Timezone-safe date helpers. The portal stores expiration dates as YYYY-MM-DD.
+// Naive new Date("2026-06-02") parses as UTC midnight which becomes the PREVIOUS
+// day in US timezones (EST/CST/MST) when formatted via toLocaleDateString — and
+// shifts the days-until-expiration calculation by a full day at certain hours.
+function parseDateLocal(s) {
+  if (!s) return null;
+  if (typeof s === 'string') {
+    const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (m) return new Date(+m[1], +m[2] - 1, +m[3]);
+  }
+  const d = new Date(s);
+  return isNaN(d) ? null : d;
+}
+function todayLocal() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+
 function daysUntilExp(dateStr) {
   if (!dateStr) return 9999;
-  const d = new Date(dateStr);
-  if (isNaN(d)) return 9999;
-  return Math.floor((d - new Date()) / 86400000);
+  const d = parseDateLocal(dateStr);
+  if (!d) return 9999;
+  // Compare local-midnight to local-midnight so the boundary respects the
+  // user's calendar day (not UTC's).
+  const now = new Date();
+  const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  return Math.floor((d - todayMidnight) / 86400000);
 }
 
 function formatDate(dateStr) {
   if (!dateStr) return '';
-  const d = new Date(dateStr);
-  if (isNaN(d)) return dateStr;
+  const d = parseDateLocal(dateStr);
+  if (!d) return dateStr;
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
@@ -4968,7 +4990,7 @@ function openAddRenewal() {
   document.getElementById('ren_editId').value = '';
   document.getElementById('deleteRenewalBtn').style.display = 'none';
   populateRenewalStateSelects();
-  document.getElementById('ren_lastUpdated').value = new Date().toISOString().slice(0, 10);
+  document.getElementById('ren_lastUpdated').value = todayLocal();
   openModal('renewalFormModal');
 }
 
@@ -5081,7 +5103,7 @@ async function importMissingRenewals(opts) {
 
   if (!opts.silent && !confirm('Add ' + missing.length + ' missing renewal entries from the built-in defaults? Existing entries are untouched.')) return;
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayLocal();
   let added = 0;
   for (const s of missing) {
     const fields = {
