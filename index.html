@@ -3183,6 +3183,7 @@ function openLocationDetail(loc) {
           +(hasFile ? 'Replace' : 'Upload')
           +'<input type="file" accept=".pdf,.png,.jpg,.jpeg,.doc,.docx" style="display:none" onchange="quickUploadLicenseCopy(\''+l.id+'\', this)">'
           +'</label>' : (!hasFile ? '<span style="font-size:11px;color:var(--gray-400)">No document</span>' : '')}
+        ${(hasFile && canUploadHere) ? ' <button class="btn btn-sm btn-danger" style="font-size:11px" onclick="event.stopPropagation();deleteLicenseCopy(\''+l.id+'\')">Delete</button>' : ''}
       </td>
     </tr>`;
   });
@@ -3558,13 +3559,16 @@ function openEditLicense(id) {
   renderRequirementsPreview(l);
   // Show existing file preview if there's a license copy
   const preview = document.getElementById('lic_currentFilePreview');
-  if (l.licenseCopy) {
+  if (l.licenseCopy || l.licenseCopyUrl) {
     const ext = (l.licenseCopyName || '').split('.').pop().toLowerCase();
     const isImage = ['png','jpg','jpeg'].includes(ext);
+    const thumbSrc = l.licenseCopy || (isImage ? l.licenseCopyUrl : '');
     preview.innerHTML = '<div style="display:flex;align-items:center;gap:8px;padding:8px;background:var(--gray-50);border-radius:var(--radius);border:1px solid var(--gray-200)">'
-      + (isImage ? '<img src="'+l.licenseCopy+'" style="height:60px;border-radius:4px">' : '<span style="font-size:24px">📄</span>')
-      + '<div><strong style="font-size:13px">'+escHtml(l.licenseCopyName || 'License copy')+'</strong>'
-      + '<div style="font-size:11px;color:var(--gray-400)">Uploaded — upload new file to replace</div></div></div>';
+      + (isImage && thumbSrc ? '<img src="'+thumbSrc+'" style="height:60px;border-radius:4px">' : '<span style="font-size:24px">📄</span>')
+      + '<div style="flex:1;min-width:0"><strong style="font-size:13px">'+escHtml(l.licenseCopyName || 'License copy')+'</strong>'
+      + '<div style="font-size:11px;color:var(--gray-400)">Uploaded — choose a new file to replace</div></div>'
+      + (canEditLicense(l) ? '<button type="button" class="btn btn-sm btn-danger" style="font-size:11px" onclick="deleteLicenseCopy(\''+l.id+'\')">Delete</button>' : '')
+      + '</div>';
   } else {
     preview.innerHTML = '';
   }
@@ -3929,8 +3933,11 @@ function renderPersonnelTable() {
           + (hasFile ? 'Replace' : 'Upload Copy')
           + '<input type="file" accept=".pdf,.png,.jpg,.jpeg,.doc,.docx" style="display:none" onchange="quickUploadLicenseCopy(\''+l.id+'\', this)">'
           + '</label>');
+        if (hasFile) {
+          lowerBtns.push('<button class="btn btn-sm btn-danger" style="font-size:10px;padding:3px 6px;flex:1;white-space:nowrap" onclick="deleteLicenseCopy(\''+l.id+'\')" title="Delete '+short+' copy">Delete</button>');
+        }
       }
-      if (lowerBtns.length) stack += '<div style="display:flex;gap:3px">' + lowerBtns.join('') + '</div>';
+      if (lowerBtns.length) stack += '<div style="display:flex;gap:3px;flex-wrap:wrap">' + lowerBtns.join('') + '</div>';
       stack += '</div>';
       return stack;
     }).join('');
@@ -4376,6 +4383,39 @@ async function quickUploadLicenseCopy(licId, input) {
   const currentLoc = lic.location;
   closeModal('locationDetailModal');
   setTimeout(() => openLocationDetail(currentLoc), 300);
+}
+
+async function deleteLicenseCopy(licId) {
+  const lic = licenses.find(l => String(l.id) === String(licId));
+  if (!lic) { showToast('License not found', 'error'); return; }
+  if (!canEditLicense(lic) && !canUpload(lic.location)) {
+    showToast('You do not have permission to delete this document', 'error');
+    return;
+  }
+  if (!(lic.licenseCopy || lic.licenseCopyUrl)) { showToast('No document to delete', 'info'); return; }
+  const fileName = lic.licenseCopyName || 'license copy';
+  if (!confirm('Delete "' + fileName + '" for ' + licDisplayName(lic) + '? This cannot be undone.')) return;
+  delete lic.licenseCopy;
+  delete lic.licenseCopyUrl;
+  delete lic.licenseCopyName;
+  delete lic.licenseCopyDate;
+  if (spConnected && lic.spItemId) {
+    try { await spSaveLicense(lic); } catch(e) { console.warn('Failed to save deletion to SharePoint', e); }
+  }
+  saveLocalCache();
+  logAudit('update', 'license', licDisplayName(lic) + ' (' + lic.location + ')', 'Removed license copy: ' + fileName, lic.spItemId || lic.id);
+  const previewEl = document.getElementById('lic_currentFilePreview');
+  if (previewEl) previewEl.innerHTML = '';
+  const licFileInput = document.getElementById('lic_file');
+  if (licFileInput) licFileInput.value = '';
+  if (document.getElementById('locationDetailModal').classList.contains('open')) {
+    const currentLoc = lic.location;
+    closeModal('locationDetailModal');
+    setTimeout(() => openLocationDetail(currentLoc), 300);
+  } else {
+    renderAll();
+  }
+  showToast('License copy deleted', 'success');
 }
 
 // ===== ROLE-BASED ACCESS CONTROL =====
@@ -6723,7 +6763,7 @@ function renderInspDocsPreview(insp) {
         ${d.name && d.label ? ' <span style="color:var(--gray-400);font-size:11px">('+escHtml(d.name)+')</span>' : ''}
         <span style="color:var(--gray-400);font-size:11px;margin-left:8px">${formatDate(d.date)}</span>
       </div>
-      <button type="button" class="btn btn-sm" style="font-size:11px;color:var(--danger);background:none;border:none;padding:2px 6px" onclick="removeInspDoc(${idx})">Remove</button>
+      <button type="button" class="btn btn-sm btn-danger" style="font-size:11px" onclick="removeInspDoc(${idx})">Delete</button>
     </div>`;
   }).join('');
 }
@@ -6865,7 +6905,7 @@ function renderRenewalDocsPreview(lic) {
         ${d.name && d.label ? ' <span style="color:var(--gray-400);font-size:11px">('+escHtml(d.name)+')</span>' : ''}
         <span style="color:var(--gray-400);font-size:11px;margin-left:8px">${formatDate(d.date)}</span>
       </div>
-      <button type="button" class="btn btn-sm" style="font-size:11px;color:var(--danger);background:none;border:none;padding:2px 6px" onclick="removeRenewalDoc(${idx})">Remove</button>
+      <button type="button" class="btn btn-sm btn-danger" style="font-size:11px" onclick="removeRenewalDoc(${idx})">Delete</button>
     </div>`;
   }).join('');
 }
